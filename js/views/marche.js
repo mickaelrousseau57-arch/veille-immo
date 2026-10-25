@@ -1,9 +1,9 @@
 /* Ecran "Marche" : vue d'ensemble d'une commune ou d'un code postal (prix reels, loyers, tendance, ventes, liens vers les sites). */
 
 import { esc, eur, eurM2, num, pct, signedPct, store, frDate, toNumber } from '../util.js';
-import { carte, kpi, segments, brancherSegments, selecteurHTML, brancherSelecteur, recents, toast, copier, champ } from '../ui.js';
+import { carte, kpi, meta, segments, brancherSegments, selecteurHTML, brancherSelecteur, recents, toast, copier, champ } from '../ui.js';
 import { marche, ventes } from '../data.js';
-import { getCommune, setCommune, comparateur, recherches, setRef } from '../state.js';
+import { getCommune, setCommune, comparateur, recherches, veilles, setRef } from '../state.js';
 import { choisirStats, tendance, loyerRef } from '../analysis.js';
 import { courbes } from '../charts.js';
 import { afficherVentes } from '../map.js';
@@ -41,7 +41,7 @@ export async function render(root, params = {}) {
   }
 
   async function dessiner() {
-    root.innerHTML = entete() + '<div id="corps"></div>';
+    root.innerHTML = entete() + '<div class="cols"><div id="corps"></div><aside class="side" id="cote"></aside></div>';
     brancherSelecteur(root, 'pick-marche', choisir);
     root.querySelector('#rec').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-insee]');
@@ -55,7 +55,8 @@ export async function render(root, params = {}) {
     let m;
     try { m = await marche(commune, cp); } catch (e) { corps.innerHTML = carte('', `<div class="notice warn"><p>Données indisponibles pour ce département (${esc(e.message)}). Vérifiez la connexion puis réessayez.</p></div>`); return; }
     corps.innerHTML = fiche(m);
-    brancher(corps, m);
+    root.querySelector('#cote').innerHTML = chercher(m);
+    brancher(root, m);
   }
 
   function accueil() {
@@ -86,7 +87,7 @@ export async function render(root, params = {}) {
     const rendement = stats && loyer ? ((loyer[0] * 12) / stats.mediane) * 100 : null;
     let h = '';
 
-    h += carte('', `<div class="head"><div><h1>${esc(c.nom)}</h1><p class="muted">${esc(c.cps.join(', '))} · département ${esc(c.dep)}${c.pop ? ' · ' + num(c.pop) + ' hab.' : ''}</p></div>
+    h += carte('', `<div class="head"><div><h1>${esc(c.nom)}</h1>${meta(esc(c.cps.join(', ')), `département ${esc(c.dep)}`, c.pop ? `${num(c.pop)} habitants` : '')}</div>
       <div class="actions"><button class="btn ghost" id="btn-comp">${icon('plus')}Comparer</button></div></div>
       ${scopes.length > 1 ? `<div class="chips scope"><button class="chip${cp ? '' : ' on'}" data-cp="">Toute la commune</button>${scopes.map((x) => `<button class="chip${cp === x ? ' on' : ''}" data-cp="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}`);
 
@@ -95,8 +96,8 @@ export async function render(root, params = {}) {
 
     if (f.a || f.h) {
       h += carte('Prix de vente', `${segments('seg-type', [['Appartement', 'Appartements'], ['Maison', 'Maisons']], type)}
-        ${stats ? `<div class="kpis">
-          ${kpi('Prix médian', eurM2(stats.mediane), src === 'manuel' ? 'référence saisie par vous' : src === 'notaires' ? 'notaires, ventes 2024' : src === 'annonces' ? `${num(stats.n)} annonces (prix demandés)` : `${num(stats.n)} ventes · ${esc(stats.fenetre)}`)}
+        ${stats ? `<div class="figs">
+          ${kpi('Prix médian', eurM2(stats.mediane), src === 'manuel' ? 'référence saisie par vous' : src === 'notaires' ? 'notaires, ventes 2024' : src === 'annonces' ? `${num(stats.n)} annonces (prix demandés)` : `${num(stats.n)} ventes, ${esc(stats.fenetre)}`)}
           ${kpi('Fourchette courante', `${num(stats.q[1])} – ${num(stats.q[3])}`, src === 'manuel' || src === 'notaires' ? '€/m², estimée à ± 15 %' : '€/m², la moitié des ventes')}
           ${bloc.s ? kpi(`${type === 'Maison' ? 'Maison' : 'Appartement'} type`, `${num(bloc.s)} m²`, `≈ ${eur(Math.round(bloc.s * stats.mediane))}`) : ''}
           ${t && t.an1 != null ? kpi('Évolution sur 1 an', signedPct(t.an1), t.an3 != null ? `${signedPct(t.an3)} sur 3 ans` : `médiane ${t.derniere}`) : ''}
@@ -109,7 +110,7 @@ export async function render(root, params = {}) {
     }
 
     if (l && (l.a || l.h)) {
-      h += carte('Loyers', `<div class="kpis">
+      h += carte('Loyers', `<div class="figs">
         ${l.a ? kpi('Appartement', `${num(l.a[0], 1)} €/m²`, `par mois, ${num(l.a[1], 0)} à ${num(l.a[2], 0)}`) : ''}
         ${l.p ? kpi('1 à 2 pièces', `${num(l.p[0], 1)} €/m²`, 'par mois') : ''}
         ${l.g ? kpi('3 pièces et +', `${num(l.g[0], 1)} €/m²`, 'par mois') : ''}
@@ -122,11 +123,16 @@ export async function render(root, params = {}) {
       h += carte('Ventes récentes', `<div id="map" class="map" hidden></div><p class="note" id="legende" hidden><span class="dotl good"></span>sous la médiane <span class="dotl neutral"></span>proche <span class="dotl warn"></span>au-dessus <span class="dotl bad"></span>nettement au-dessus</p><div class="actions"><button class="btn" id="btn-map">${icon('map')}Voir sur la carte</button></div><div id="ventes"></div>`, { aide: '12 derniers mois' });
     }
 
-    h += carte('Chercher des annonces', `${segments('seg-mode', [['achat', 'Acheter'], ['location', 'Louer']], modeLiens)}
+    return h;
+  }
+
+  /* Colonne laterale : liens vers les sites d'annonces. */
+  function chercher(m) {
+    const c = m.commune;
+    return carte('Chercher des annonces', `${segments('seg-mode', [['achat', 'Acheter'], ['location', 'Louer']], modeLiens)}
       <ul class="links" id="liens"></ul>
       <p class="note">Ces liens ouvrent le site dans un nouvel onglet. Pour les sites marqués « accueil », recopiez les critères (bouton ci-dessous). Copiez ensuite l'annonce trouvée dans « Analyser ».</p>
       <div class="actions"><button class="btn ghost" id="btn-crit">${icon('copy')}Copier les critères</button><button class="btn ghost" id="btn-save">${icon('eye')}Suivre cette recherche</button><a class="btn" href="#analyser?insee=${esc(c.insee)}">${icon('scan')}Analyser une annonce ici</a></div>`);
-    return h;
   }
 
   function refManuelle(m) {
@@ -142,7 +148,7 @@ export async function render(root, params = {}) {
     return carte('Prix de vente', `
       <div class="notice"><p>Les ventes réelles ne sont pas publiées pour ce département (Alsace-Moselle et Mayotte ne figurent pas dans les données DVF : les actes sont au Livre foncier, non ouvert). L'application utilise à la place, dans cet ordre : votre prix de référence, les prix médians des notaires, puis les annonces que vous importez.</p></div>
       ${n ? `<h3 class="sec">Repères des notaires (ventes 2024)</h3>
-        ${lignes.length ? `<p class="line" style="margin-top:0">${esc(m.commune.nom)} : ${lignes.join(' · ')}</p>` : `<p class="muted">${esc(m.commune.nom)} n'est pas détaillée dans cette publication.</p>`}
+        ${lignes.length ? `<p class="line" style="margin-top:0">${esc(m.commune.nom)} : ${lignes.join(', ')}</p>` : `<p class="muted">${esc(m.commune.nom)} n'est pas détaillée dans cette publication.</p>`}
         ${n.dep ? `<p class="muted">Département : appartements ${num(n.dep.a)} €/m²${evo(n.dep.aEvo)}, maisons ${eu(n.dep.h)}${evo(n.dep.hEvo)}.</p>` : ''}
         ${c && c.quartiers ? `<details><summary>Appartements par quartier</summary><table class="tbl"><thead><tr><th>Quartier</th><th>Prix médian</th><th>1 an</th></tr></thead><tbody>${c.quartiers.map((q) => `<tr><td>${esc(q.nom)}</td><td>${eurM2(q.a)}</td><td>${signedPct(q.evo)}</td></tr>`).join('')}</tbody></table></details>` : ''}
         ${n.secteurs.length ? `<details><summary>Par secteur du département</summary><table class="tbl"><thead><tr><th>Secteur</th><th>Appart.</th><th>Maison</th></tr></thead><tbody>${n.secteurs.map((q) => `<tr><td>${esc(q.nom)}</td><td>${q.a ? eurM2(q.a) : '--'}</td><td>${q.h ? eu(q.h) : '--'}</td></tr>`).join('')}</tbody></table></details>` : ''}
@@ -177,8 +183,9 @@ export async function render(root, params = {}) {
     brancherSegments(corps, 'seg-mode', (v) => { modeLiens = v; store.set('reg.modeLiens', v); liens(); });
     corps.querySelector('#btn-crit')?.addEventListener('click', () => copier(criteres({ commune: c, mode: modeLiens, type: type === 'Maison' ? 'maison' : 'appartement' })));
     corps.querySelector('#btn-save')?.addEventListener('click', () => {
-      recherches.add({ insee: c.insee, nom: c.nom, dep: c.dep, cps: c.cps, lat: c.lat, lon: c.lon, mode: modeLiens, type: type === 'Maison' ? 'Maison' : 'Appartement', budgetMax: null, surfaceMin: null });
-      toast('Recherche ajoutée à Ma veille');
+      const nomVeille = (veilles.get(veilles.pourAjout()) || {}).nom;
+      const ajoutee = recherches.add({ insee: c.insee, nom: c.nom, dep: c.dep, cps: c.cps, lat: c.lat, lon: c.lon, mode: modeLiens, type: type === 'Maison' ? 'Maison' : 'Appartement', budgetMax: null, surfaceMin: null });
+      toast(ajoutee === false ? `Cette recherche existe déjà dans « ${nomVeille} »` : `Recherche ajoutée à la veille « ${nomVeille} »`);
     });
     if (m.sansDvf) return;
     const v = (await ventes(c.dep))[c.insee] || [];
@@ -187,7 +194,7 @@ export async function render(root, params = {}) {
     const box = corps.querySelector('#ventes');
     if (box) {
       box.innerHTML = rows.length
-        ? `<ul class="comps">${rows.slice(0, 8).map((x) => `<li><div><b>${eur(x[1])}</b> · ${num(x[2])} m²${x[3] ? ` · ${x[3]} p.` : ''}<small>${esc(x[7] || 'Adresse non précisée')} · ${esc(frDate(x[0]))}</small></div><b class="ppm">${eurM2(x[1] / x[2])}</b></li>`).join('')}</ul><p class="note">${rows.length > 8 ? `8 ventes affichées sur ${rows.length} conservées pour cette commune.` : ''} Les 40 ventes les plus récentes de la commune sont conservées.</p>`
+        ? `<ul class="comps">${rows.slice(0, 8).map((x) => `<li><div><b>${eur(x[1])}</b>, ${num(x[2])} m²${x[3] ? `, ${x[3]} p.` : ''}<small>${esc(x[7] || 'Adresse non précisée')}, ${esc(frDate(x[0]))}</small></div><b class="ppm">${eurM2(x[1] / x[2])}</b></li>`).join('')}</ul><p class="note">${rows.length > 8 ? `8 ventes affichées sur ${rows.length} conservées pour cette commune.` : ''} Les 40 ventes les plus récentes de la commune sont conservées.</p>`
         : '<p class="muted">Aucune vente récente enregistrée pour ce filtre.</p>';
     }
     corps.querySelector('#btn-map')?.addEventListener('click', async (e) => {

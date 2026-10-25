@@ -60,3 +60,31 @@ export function amortissementChart(rows) {
   const axe = rows.map((r, i) => (r.annee % pas === 0 || i === 0 ? `<text class="axis" x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${r.annee}</text>` : '')).join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Répartition annuelle entre capital remboursé et intérêts">${barres}${axe}</svg>`;
 }
+
+/* ---------- Barometre de prix : sept paliers, du bon prix (1) au prix eleve (7) ---------- */
+const SEUILS = [-25, -15, -5, 5, 15, 25];
+export const palier = (ecart) => 1 + SEUILS.filter((x) => ecart >= x).length;
+const signe = (e) => `${e > 0 ? '+' : e < 0 ? '−' : ''}${Math.round(Math.abs(e))}\u00a0%`;
+
+export function barometre(ecart, resume = '') {
+  const actif = palier(ecart);
+  const haut = [30, 38, 46, 54, 62, 70, 78];
+  const base = 112, largeur = 36, ecartX = 4;
+  const barres = haut.map((h, i) => {
+    const x = 2 + i * (largeur + ecartX);
+    return `<rect class="b b${i + 1} ${i + 1 === actif ? 'on' : 'off'}" x="${x}" y="${base - h}" width="${largeur}" height="${h}"/>`;
+  }).join('');
+  const cx = 2 + (actif - 1) * (largeur + ecartX) + largeur / 2;
+  const fw = 62;
+  const fx = Math.min(Math.max(cx - fw / 2, 0), 280 - fw);
+  const fy = base - haut[actif - 1] - 30;
+  const drapeau = `<rect class="flag" x="${fx.toFixed(1)}" y="${fy}" width="${fw}" height="24"/><path class="flag" d="M${(cx - 6).toFixed(1)} ${fy + 24} L${(cx + 6).toFixed(1)} ${fy + 24} L${cx.toFixed(1)} ${fy + 31} Z"/><text class="flag-txt" x="${(fx + fw / 2).toFixed(1)}" y="${fy + 17}" text-anchor="middle">${signe(ecart)}</text>`;
+  return `<svg class="baro-svg" viewBox="0 0 280 134" role="img" aria-label="${esc(`Prix ${signe(ecart)} par rapport au marché, palier ${actif} sur 7. ${resume}`)}">${barres}${drapeau}<text class="end" x="2" y="128">Bon prix</text><text class="end" x="278" y="128" text-anchor="end">Prix élevé</text></svg>`;
+}
+
+/* Version compacte pour une ligne de liste. */
+export function baroMini(ecart) {
+  const actif = palier(ecart);
+  const barres = [8, 11, 14, 17, 20, 23, 26].map((h, i) => `<rect class="b b${i + 1} ${i + 1 === actif ? 'on' : 'off'}" x="${1 + i * 8}" y="${28 - h}" width="6" height="${h}"/>`).join('');
+  return `<svg class="baro-mini" viewBox="0 0 57 30" role="img" aria-label="${esc(`Prix ${signe(ecart)} par rapport au marché`)}">${barres}</svg>`;
+}

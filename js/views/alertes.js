@@ -20,7 +20,7 @@ export async function render(root) {
     }
     return carte('1. Créer l\'alerte sur chaque site', `
       <p class="lead">Sur chaque site, enregistrez votre recherche et activez l'alerte par e-mail. Copiez les critères ci-dessous pour les recopier.</p>
-      <ul class="searches">${liste.map((r) => `<li data-r="${esc(r.id)}"><details><summary><b>${esc(r.nom)}</b> · ${r.mode === 'location' ? 'location' : 'achat'}${r.type ? ' · ' + esc(String(r.type).toLowerCase()) : ''}</summary>
+      <ul class="searches">${liste.map((r) => `<li data-r="${esc(r.id)}"><details><summary><b>${esc(r.nom)}</b>, ${r.mode === 'location' ? 'location' : 'achat'}${r.type ? ', ' + esc(String(r.type).toLowerCase()) : ''}</summary>
         <div class="actions"><button class="btn ghost" data-act="crit">${icon('copy')}Copier les critères</button></div>
         <ul class="links">${PORTAILS.map((p) => `<li><a href="${esc(p.accueil)}" target="_blank" rel="noopener noreferrer">${esc(p.nom)}<small>accueil</small>${icon('external')}</a></li>`).join('')}</ul></details></li>`).join('')}</ul>
       <p class="note">Les e-mails d'alerte arrivent dans votre boîte Gmail. Quelques jours d'alertes suffisent pour tester.</p>`);

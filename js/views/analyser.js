@@ -1,12 +1,12 @@
 /* Ecran "Analyser" : coller ou saisir une annonce, savoir si c'est une bonne affaire. */
 
 import { esc, toNumber } from '../util.js';
-import { carte, champ, choix, segments, brancherSegments, selecteurHTML, brancherSelecteur, lire, toast, recents, basculeAnalyse } from '../ui.js';
+import { carte, champ, choix, segments, brancherSegments, selecteurHTML, brancherSelecteur, lire, toast, recents, basculeAnalyse, veilleSelectHTML, brancherVeilleSelect } from '../ui.js';
 import { chercher, communeParInsee } from '../data.js';
-import { getCommune, setCommune, annonces } from '../state.js';
+import { getCommune, setCommune, annonces, veilles } from '../state.js';
 import { parseAnnonce } from '../parse.js';
 import { EQUIPEMENTS, ETATS, champsDe } from '../caracteristiques.js';
-import { lireCollage, PREFIXE } from '../multi.js';
+import { lireCollage, PREFIXE, titreDe, titreAuto } from '../multi.js';
 import { collerTexte, surRetour } from '../presse.js';
 import { marquePageHTML, brancherMarquePage } from './marquepage.js';
 import { evaluer } from '../evaluer.js';
@@ -19,6 +19,7 @@ export async function render(root, params = {}) {
   let mode = params.mode || 'vente';
   let valeurs = { type: 'Appartement', prix: '', surface: '', pieces: '', dpe: '', terrain: '', url: '', titre: '', portail: '', chambres: '', sdb: '', annee: '', etage: '', etat: '', extras: [] };
   let derniere = null;
+  let veilleCible = veilles.pourAjout();
 
   let partage = null;
   if (params.text || params.url) {
@@ -65,7 +66,7 @@ export async function render(root, params = {}) {
   }
 
   function dessiner() {
-    root.innerHTML = basculeAnalyse('une') + bilanPartage() + formulaire() + '<div id="res"></div>' + carte('Remplir automatiquement', marquePageHTML({ ouvert: !!(partage && !(partage.p.prix && partage.p.surface)) }));
+    root.innerHTML = basculeAnalyse('une') + bilanPartage() + '<div class="cols"><div>' + formulaire() + '</div><div class="side libre"><div id="res"></div>' + carte('Remplir automatiquement', marquePageHTML({ ouvert: !!(partage && !(partage.p.prix && partage.p.surface)) })) + '</div></div>';
     brancherMarquePage(root);
     root.querySelector('#btn-coller-un').addEventListener('click', async () => {
       const t = await collerTexte();
@@ -118,6 +119,8 @@ export async function render(root, params = {}) {
     if (!p.prix && !p.surface && !p.cp) { toast('Rien de reconnu : saisissez les champs à la main'); return; }
     relire();
     appliquer(p);
+    const tt = titreDe(brut);
+    if (tt && !valeurs.titre) valeurs.titre = tt;
     if (p.cp) {
       try {
         const r = await chercher(p.cp, 1);
@@ -148,15 +151,17 @@ export async function render(root, params = {}) {
   function afficher(res, a) {
     const box = root.querySelector('#res');
     const corps = a.mode === 'location' ? resultatLocation(res, a) : resultatAchat(res, a);
-    box.innerHTML = carte(`${esc(a.type)} · ${esc(a.communeNom)}`, `${corps}
+    box.innerHTML = carte(`${esc(a.type)} à ${esc(a.communeNom)}`, `${corps}
+      ${veilleSelectHTML('an-veille', veilleCible, { label: 'Ajouter dans la veille' })}
       <div class="actions">
         <button class="btn primary" id="btn-suivre">${icon('eye')}Suivre cette annonce</button>
         ${a.mode === 'vente' ? `<a class="btn" href="#credit?prix=${a.prix}&insee=${esc(a.insee)}">${icon('calc')}Simuler le crédit</a>` : ''}
       </div>`);
+    brancherVeilleSelect(box.querySelector('#an-veille'), (id) => { veilleCible = id; }, () => a.communeNom || '');
     box.querySelector('#btn-suivre').addEventListener('click', () => {
       const { insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre, portail, communeNom, dep, cp } = a;
-      annonces.add({ ...champsDe(a), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre: titre || `${type} ${communeNom}`, portail, communeNom, dep, cp });
-      toast('Ajoutée à Ma veille');
+      annonces.add({ ...champsDe(a), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre: titre || titreAuto({ type, pieces, surface, communeNom }), portail, communeNom, dep, cp, veilleId: veilleCible });
+      toast(`Ajoutée à la veille « ${(veilles.get(veilleCible) || {}).nom} »`);
     });
   }
 

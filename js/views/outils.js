@@ -3,7 +3,7 @@
 import { esc, eur, eurM2, num, pct, signedPct, toNumber, store, frDate } from '../util.js';
 import { carte, kpi, champ, selecteurHTML, brancherSelecteur, lire, toast, telecharger } from '../ui.js';
 import { marche, meta, taux } from '../data.js';
-import { comparateur, reglages, getCommune, exporter, importer } from '../state.js';
+import { comparateur, reglages, getCommune, exporter, importer, toutRemettreAZero } from '../state.js';
 import { choisirStats, tendance, loyerRef } from '../analysis.js';
 import { rendement, simuler, tauxPourDuree, FRAIS_NOTAIRE } from '../credit.js';
 import { icon } from '../icons.js';
@@ -86,7 +86,7 @@ export async function render(root) {
       const cash = r.revenuNet / 12 - c.mensualiteTotale;
       credit = `${kpi('Mensualité du crédit', eur(Math.round(c.mensualiteTotale)), `${num(tx, 2)} % sur ${s.duree} ans, assurance comprise`)}${kpi('Trésorerie mensuelle', `<span class="${cash >= 0 ? 'pos' : 'neg'}">${cash >= 0 ? '+' : ''}${eur(Math.round(cash))}</span>`, 'loyer net moins mensualité')}`;
     } catch { /* taux indisponibles : pas de simulation de crédit */ }
-    out.innerHTML = `<div class="kpis">${kpi('Loyer retenu', eur(Math.round(loyer)) + '/mois', estime ? 'estimation du secteur' : 'saisi')}${kpi('Rendement brut', pct(r.brut), 'loyer annuel ÷ prix')}${kpi('Rendement net', pct(r.net), 'après vacance, charges, taxe, frais de notaire')}${credit}</div>
+    out.innerHTML = `<div class="figs">${kpi('Loyer retenu', eur(Math.round(loyer)) + '/mois', estime ? 'estimation du secteur' : 'saisi')}${kpi('Rendement brut', pct(r.brut), 'loyer annuel ÷ prix')}${kpi('Rendement net', pct(r.net), 'après vacance, charges, taxe, frais de notaire')}${credit}</div>
       <p class="note">Frais de notaire estimés à ${FRAIS_NOTAIRE.ancien} %. Hors impôt sur le revenu et prélèvements sociaux, qui dépendent de votre situation.</p>`;
   }
 
@@ -111,7 +111,7 @@ export async function render(root) {
     <p class="note">${m ? `Données générées le ${esc(frDate(m.generated))} : ${num(m.ventes)} ventes analysées, ${num(m.communes)} communes.` : ''} Les annonces des sites (Leboncoin, SeLoger, etc.) ne sont pas collectées automatiquement : leurs conditions d'utilisation l'interdisent. Vous les collez dans l'application, qui les compare aux données officielles ci-dessus.</p>
     <h3 class="sec">Confidentialité</h3>
     <p class="muted">Aucun compte, aucun suivi. Vos annonces, notes et réglages sont stockés uniquement dans ce navigateur. Les calculs se font sur votre appareil.</p>
-    <div class="actions"><button class="btn ghost" id="bk-exp">${icon('download')}Sauvegarde (.json)</button><label class="btn ghost file">${icon('upload')}Restaurer<input type="file" id="bk-imp" accept="application/json,.json" hidden></label><button class="btn danger" id="bk-del">${icon('trash')}Tout effacer</button></div>`;
+    <div class="actions"><button class="btn ghost" id="bk-exp">${icon('download')}Sauvegarde (.json)</button><label class="btn ghost file">${icon('upload')}Restaurer<input type="file" id="bk-imp" accept="application/json,.json" hidden></label><a class="btn ghost" href="#veilles">Mes veilles</a><button class="btn danger" id="bk-del">${icon('trash')}Tout remettre à zéro</button></div>`;
   }
 
   root.innerHTML = carte('Comparateur de villes', comparateurHTML()) + carte('Investissement locatif', investissementHTML())
@@ -128,12 +128,7 @@ export async function render(root) {
     if (rm) { comparateur.remove(rm.dataset.rm); await tableComparateur(); }
     if (e.target.closest('#chk-reset')) { store.del('reg.visite'); root.querySelectorAll('.check input').forEach((i) => { i.checked = false; }); }
     if (e.target.closest('#bk-exp')) telecharger(`veille-immo-${new Date().toISOString().slice(0, 10)}.json`, exporter());
-    if (e.target.closest('#bk-del') && confirm('Effacer toutes vos annonces, recherches et réglages sur cet appareil ?')) {
-      Object.keys(localStorage).filter((k) => k.startsWith('immo.')).forEach((k) => localStorage.removeItem(k));
-      toast('Données effacées');
-      location.hash = '#marche';
-      location.reload();
-    }
+    if (e.target.closest('#bk-del') && confirm('Tout remettre à zéro ? Annonces, veilles, recherches et réglages seront effacés de cet appareil (annulation possible quelques secondes). Pensez à faire une sauvegarde avant.')) toutRemettreAZero();
   });
   root.addEventListener('change', async (e) => {
     if (e.target.matches('.check input')) {

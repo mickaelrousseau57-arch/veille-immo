@@ -2,10 +2,10 @@
    fusionne les doublons entre sites, les compare au marche et les classe. */
 
 import { esc, eur, eurM2, num, store } from '../util.js';
-import { carte, badge, segments, brancherSegments, selecteurHTML, brancherSelecteur, toast, basculeAnalyse } from '../ui.js';
+import { carte, badge, segments, brancherSegments, selecteurHTML, brancherSelecteur, toast, basculeAnalyse, veilleSelectHTML, brancherVeilleSelect } from '../ui.js';
 import { chercher } from '../data.js';
-import { getCommune, annonces } from '../state.js';
-import { lireCollage, lireAnnonces, regrouper, memeBien } from '../multi.js';
+import { getCommune, annonces, veilles } from '../state.js';
+import { lireCollage, lireAnnonces, regrouper, memeBien, titreAuto } from '../multi.js';
 import { marquePageHTML, brancherMarquePage } from './marquepage.js';
 import { collerTexte, surRetour } from '../presse.js';
 import { PREFIXE } from '../multi.js';
@@ -17,6 +17,7 @@ export async function render(root) {
   let mode = store.get('reg.importMode', 'vente');
   let defaut = getCommune();
   let lot = [];
+  let veilleCible = veilles.pourAjout();
   let texte = '';
 
   function formulaire() {
@@ -73,6 +74,7 @@ export async function render(root) {
       if (!c && defaut) c = defaut;
       if (c) { a.insee = c.insee; a.communeNom = c.nom; a.dep = c.dep; a.cp = a.cp || (c.cps && c.cps.length === 1 ? c.cps[0] : null); }
     }
+    brut.forEach((a) => { if (!a.titre) a.titre = titreAuto(a); });
     lot = regrouper(brut).map((g) => ({ ...g, choisi: false, eval: null, existe: annonces.list().find((x) => memeBien(x, g)) || null }));
     lot.forEach((g) => { g.choisi = !g.existe && g.complete && !!g.insee; });
     afficherLot();
@@ -94,14 +96,14 @@ export async function render(root) {
   function ligne(g, i) {
     const e = g.eval;
     const v = e && e.ok ? badge(e.verdict.tone, e.verdict.label) : badge('info', g.complete ? (g.insee ? 'Non évalué' : 'Commune ?') : 'Incomplète');
-    const detail = e && e.ok ? (g.mode === 'location' ? `${e.ecart > 0 ? '+' : ''}${num(e.ecart, 0)} % vs marché` : `score ${e.score} · ${e.ecart > 0 ? '+' : ''}${num(e.ecart, 0)} %`) : '';
+    const detail = e && e.ok ? (g.mode === 'location' ? `${e.ecart > 0 ? '+' : ''}${num(e.ecart, 0)} % vs marché` : `${e.ecart > 0 ? '+' : ''}${num(e.ecart, 0)} % par rapport au marché`) : '';
     const sources = (g.sources || []).filter((s) => s.portail).map((s) => `<span class="tag">${esc(s.portail)}</span>`).join('');
     return `<label class="row" data-i="${i}"><input type="checkbox" data-act="choix"${g.choisi ? ' checked' : ''} aria-label="Retenir cette annonce">
       <div class="row-main"><b>${esc(g.titre || `${g.type} ${g.communeNom || ''}`)}</b>
         <small>${esc(g.communeNom || 'Commune à préciser')}${g.cp ? ' ' + esc(g.cp) : ''}</small>
         <div class="row-nums"><span><b>${eur(g.prix)}${g.mode === 'location' ? '/mois' : ''}</b></span><span>${g.surface ? num(g.surface) + ' m²' : 'surface ?'}</span>${g.pieces ? `<span>${g.pieces} p.</span>` : ''}${g.surface ? `<span>${g.mode === 'location' ? num(g.prix / g.surface, 1) + ' €/m²' : eurM2(g.prix / g.surface)}</span>` : ''}${g.dpe ? `<span>DPE ${esc(g.dpe)}</span>` : ''}</div>
         ${resume(g).length ? `<div>${resume(g).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
-        <div>${sources}${(g.sources || []).length > 1 ? '<span class="tag">doublon fusionné</span>' : ''}${g.existe ? '<span class="tag">déjà dans Ma veille</span>' : ''}</div>
+        <div>${sources}${(g.sources || []).length > 1 ? '<span class="tag">doublon fusionné</span>' : ''}${g.existe ? `<span class="tag">déjà dans « ${esc((veilles.get(veilles.idDe(g.existe)) || {}).nom || 'Ma veille')} »</span>` : ''}</div>
         ${!g.complete ? `<div class="inp mini"><input type="text" inputmode="decimal" data-act="surf" placeholder="Surface m²" aria-label="Surface en m²"></div>` : ''}
         ${g.typeIncertain ? `<div class="inp mini"><select data-act="type" aria-label="Type de bien"><option value="Appartement">Appartement</option><option value="Maison"${g.type === 'Maison' ? ' selected' : ''}>Maison</option></select></div>` : ''}
       </div><div class="row-v">${v}<small>${esc(detail)}</small></div></label>`;
@@ -115,8 +117,10 @@ export async function render(root) {
       <p class="muted">${fusions > 0 ? `${fusions} doublon${fusions > 1 ? 's' : ''} entre sites fusionné${fusions > 1 ? 's' : ''}. ` : ''}Classées de la meilleure affaire à la plus chère. Décochez celles qui ne vous intéressent pas.</p>
       <div class="actions"><button class="btn ghost" id="tout">Tout cocher</button><button class="btn ghost" id="rien">Tout décocher</button></div>
       <div id="rows">${lot.map(ligne).join('')}</div>
-      <div class="actions"><button class="btn primary" id="ajouter"${n ? '' : ' disabled'}>${icon('eye')}Ajouter ${n} annonce${n > 1 ? 's' : ''} à Ma veille</button></div>
+      ${veilleSelectHTML('imp-veille', veilleCible, { label: 'Ajouter dans la veille' })}
+      <div class="actions"><button class="btn primary" id="ajouter"${n ? '' : ' disabled'}>${icon('eye')}Ajouter ${n} annonce${n > 1 ? 's' : ''}</button></div>
       <p class="note">Vérifiez les chiffres avant de décider : la lecture d'une page copiée peut se tromper (surface, type de bien). Le verdict compare au prix médian des ventes passées du secteur.</p>`);
+    brancherVeilleSelect(zone.querySelector('#imp-veille'), (id) => { veilleCible = id; }, () => (lot.find((g) => g.communeNom) || {}).communeNom || '');
     zone.querySelector('#tout').addEventListener('click', () => { lot.forEach((g) => { if (g.complete && g.insee) g.choisi = true; }); afficherLot(); });
     zone.querySelector('#rien').addEventListener('click', () => { lot.forEach((g) => { g.choisi = false; }); afficherLot(); });
     zone.querySelector('#rows').addEventListener('change', async (e) => {
@@ -135,7 +139,7 @@ export async function render(root) {
   function afficherBouton() {
     const n = lot.filter((g) => g.choisi).length;
     const b = root.querySelector('#ajouter');
-    if (b) { b.disabled = !n; b.lastChild.textContent = `Ajouter ${n} annonce${n > 1 ? 's' : ''} à Ma veille`; }
+    if (b) { b.disabled = !n; b.lastChild.textContent = `Ajouter ${n} annonce${n > 1 ? 's' : ''}`; }
   }
 
   function ajouter() {
@@ -143,10 +147,11 @@ export async function render(root) {
     for (const g of lot.filter((x) => x.choisi)) {
       if (g.existe) { if (annonces.ajouterSources(g.existe.id, g.sources)) fusionnees++; continue; }
       const { mode: md, type, prix, surface, pieces, dpe, terrain, url, titre, portail, communeNom, dep, cp, insee, sources } = g;
-      annonces.add({ ...champsDe(g), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url: url || (sources[0] && sources[0].url) || '', titre: titre || `${type} ${communeNom}`, portail: portail || (sources[0] && sources[0].portail) || '', communeNom, dep, cp, sources });
+      annonces.add({ ...champsDe(g), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url: url || (sources[0] && sources[0].url) || '', titre: titre || titreAuto({ type, pieces, surface, communeNom }), portail: portail || (sources[0] && sources[0].portail) || '', communeNom, dep, cp, sources, veilleId: veilleCible });
       neuves++;
     }
     toast(`${neuves} ajoutée${neuves > 1 ? 's' : ''}${fusionnees ? `, ${fusionnees} déjà suivie${fusionnees > 1 ? 's' : ''} enrichie${fusionnees > 1 ? 's' : ''}` : ''}`);
+    veilles.ouvrir(veilleCible);
     location.hash = '#veille';
   }
 

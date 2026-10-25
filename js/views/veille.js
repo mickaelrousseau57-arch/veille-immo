@@ -2,14 +2,16 @@
    selection et suppression en masse, baisses de prix, recherches enregistrees. */
 
 import { esc, eur, eurM2, num, signedPct, frDate, todayISO, toNumber, store } from '../util.js';
-import { carte, badge, toast, toastAction, telecharger, segments, brancherSegments, champ } from '../ui.js';
-import { annonces, recherches, STATUTS, variationPrix, exporter, importer, versCSV } from '../state.js';
+import { carte, badge, meta, toast, toastAction, telecharger, segments, brancherSegments, champ, veilleSelectHTML, optionsVeilles, brancherVeilleSelect, creerVeille } from '../ui.js';
+import { annonces, recherches, veilles, STATUTS, variationPrix, exporter, importer, versCSV } from '../state.js';
 import { evaluer } from '../evaluer.js';
 import { liensRecherche } from '../portals.js';
 import { badgeVerdict } from './resultat.js';
 import { EQUIPEMENTS, ETATS, CHAUFFAGES, resume } from '../caracteristiques.js';
+import { titreAuto, titreSuspect } from '../multi.js';
 import { TRIS, FILTRES_VIDES, filtrer, trier, communesDe, nombreFiltres, categorie } from '../filtres.js';
 import { icon } from '../icons.js';
+import { baroMini } from '../charts.js';
 
 const JOURS_RAPPEL = 7;
 const joursDepuis = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -17,7 +19,13 @@ const ANCIENS_TRIS = { score: 'ecart', prix: 'prixAsc' };
 const NOMS_EQUIP = Object.fromEntries(EQUIPEMENTS);
 const options = (liste, valeur, vide) => `${vide ? `<option value="">${esc(vide)}</option>` : ''}${liste.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(valeur ?? '') ? ' selected' : ''}>${esc(l)}</option>`).join('')}`;
 
-export async function render(root) {
+export async function render(root, params = {}) {
+  if (params.v) veilles.ouvrir(params.v);
+  let scope = veilles.courante();
+  const dansScope = (x) => scope === 'toutes' || veilles.idDe(x) === scope;
+  // Anciens imports : un titre qui est en fait un lien d'interface ("Simuler mon credit") est remplace par un titre construit.
+  const aCorriger = annonces.list().some((a) => titreSuspect(a.titre));
+  if (aCorriger) annonces.save(annonces.list().map((a) => (titreSuspect(a.titre) ? { ...a, titre: titreAuto(a) } : a)));
   let statut = store.get('reg.filtreVeille', 'actives');
   let tri = store.get('reg.triVeille', 'ecart');
   tri = ANCIENS_TRIS[tri] || tri;
@@ -32,7 +40,7 @@ export async function render(root) {
   const evals = new Map();
   let panneauOuvert = false;
 
-  const parStatut = () => annonces.list().filter((a) => (statut === 'actives' ? a.statut !== 'ecarte' : statut === 'ecarte' ? a.statut === 'ecarte' : true));
+  const parStatut = () => annonces.list().filter(dansScope).filter((a) => (statut === 'actives' ? a.statut !== 'ecarte' : statut === 'ecarte' ? a.statut === 'ecarte' : true));
   const visibles = () => trier(filtrer(parStatut(), filtres, evals), tri, evals);
 
   /* ---------- Haut de page : filtres et commandes ---------- */
@@ -62,14 +70,15 @@ export async function render(root) {
   }
 
   function tete() {
-    return carte('Ma veille', `<p class="lead">Les annonces que vous suivez, comparées au marché avec les données du jour. Le prix se met à jour à la main : notez chaque changement pour repérer les baisses.</p>
+    const nomVeille = scope === 'toutes' ? 'Toutes les annonces' : (veilles.get(scope) || {}).nom;
+    return carte(esc(nomVeille), `<div class="veille-barre">${veilleSelectHTML('sel-veille', scope, { label: 'Veille ouverte', toutes: true })}<a class="btn ghost" href="#veilles">Gérer mes veilles</a></div>
+      <p class="lead">Les annonces de cette veille, comparées au marché avec les données du jour. Le prix se met à jour à la main : notez chaque changement pour repérer les baisses.</p>
       ${segments('seg-statut', [['actives', 'En cours'], ['ecarte', 'Écartées'], ['tout', 'Toutes']], statut)}
       <div class="toolbar">
         <div class="field" style="margin:0"><label for="tri">Trier par</label><div class="inp"><select id="tri">${options(TRIS, tri)}</select></div></div>
         ${segments('seg-vue', [['cartes', 'Cartes'], ['tableau', 'Tableau']], vue)}
       </div>
-      <div class="barre-info"><span id="compteur"></span><button type="button" class="btn ghost" id="btn-sel">${icon('check')}<span id="btn-sel-txt">Sélectionner</span></button></div>
-      ${panneauFiltres()}`);
+      <div class="barre-info"><span id="compteur"></span><button type="button" class="btn ghost" id="btn-sel">${icon('check')}<span id="btn-sel-txt">Sélectionner</span></button></div>`);
   }
 
   /* ---------- Liste : cartes ou tableau ---------- */
@@ -89,6 +98,7 @@ export async function render(root) {
         <div class="field"><label for="c-chauf-${esc(a.id)}">Chauffage</label><div class="inp"><select id="c-chauf-${esc(a.id)}" data-f="chauffage">${options(CHAUFFAGES, a.chauffage, 'Inconnu')}</select></div></div>
         ${a.mode !== 'location' ? champ({ id: `c-charges-${a.id}`, label: 'Charges de copropriété', type: 'number', valeur: a.chargesAn ?? '', suffixe: '€/an', attrs: 'data-f="chargesAn"' }) : ''}
       </div>
+      ${veilleSelectHTML('c-veille-' + a.id, veilles.idDe(a), { label: 'Rangée dans la veille' })}
       <div class="chips" data-equip>${EQUIPEMENTS.map(([k, n]) => `<button type="button" class="chip${(a.extras || []).includes(k) ? ' on' : ''}" data-v="${k}" aria-pressed="${(a.extras || []).includes(k)}">${esc(n)}</button>`).join('')}</div>`;
   }
 
@@ -98,11 +108,17 @@ export async function render(root) {
     const retard = joursDepuis(a.verifieLe || a.creeLe) >= JOURS_RAPPEL && a.statut !== 'ecarte';
     const carac = resume(a);
     const sel = selection ? `<label class="ann-sel"><input type="checkbox" data-act="sel"${choisies.has(a.id) ? ' checked' : ''} aria-label="Sélectionner cette annonce"></label>` : '';
+    const sites = (a.sources || []).length > 1 ? `${a.sources.length} sites` : a.portail ? esc(a.portail) : '';
+    const verdict = r && r.ok
+      ? `${baroMini(r.ecart)}<span class="ann-v">${badgeVerdict(r)}<span class="muted">${r.ecart > 0 ? '+' : r.ecart < 0 ? '−' : ''}${num(Math.abs(r.ecart), 0)} % par rapport au marché</span></span>`
+      : `<span class="ann-v">${r ? badge('info', 'Non évalué') : '<span class="muted">Évaluation en cours</span>'}</span>`;
     return `<article class="ann${a.statut === 'ecarte' ? ' off' : ''}${choisies.has(a.id) ? ' choisie' : ''}" data-id="${esc(a.id)}">
-      <div class="ann-top">${sel}<div class="ann-titre"><h3>${esc(a.titre || a.type)}</h3><p class="muted">${esc(a.communeNom || '')}${a.cp ? ' ' + esc(a.cp) : ''} · ${a.mode === 'location' ? 'Location' : 'Vente'}${(a.sources || []).length > 1 ? ' · ' + a.sources.length + ' sites' : a.portail ? ' · ' + esc(a.portail) : ''}</p></div>
-        <div class="ann-badges">${r ? badgeVerdict(r) : badge('info', '…')}${v != null && v !== 0 ? badge(v < 0 ? 'good' : 'warn', `${signedPct(v)} depuis la saisie`) : ''}</div></div>
-      <div class="ann-nums"><b>${eur(a.prix)}${a.mode === 'location' ? '/mois' : ''}</b><span>${num(a.surface)} m²${a.pieces ? ' · ' + a.pieces + ' p.' : ''}</span><span>${a.mode === 'location' ? `${num(a.prix / a.surface, 1)} €/m²` : eurM2(a.prix / a.surface)}</span>${r && r.ok && a.mode === 'vente' ? `<span>${r.ecart > 0 ? '+' : ''}${num(r.ecart, 0)} % vs marché</span><span>score ${r.score}</span>` : ''}${a.dpe ? `<span>DPE ${esc(a.dpe)}</span>` : ''}</div>
-      ${carac.length ? `<p class="carac">${carac.map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</p>` : ''}
+      <div class="ann-row">${sel}
+        <div class="ann-titre"><h3>${esc(a.titre || a.type)}</h3>${meta(`${esc(a.communeNom || '')}${a.cp ? ' ' + esc(a.cp) : ''}`, a.mode === 'location' ? 'Location' : 'Vente', sites, `${num(a.surface)} m²`, a.pieces ? `${a.pieces} pièces` : '', a.dpe ? `DPE ${esc(a.dpe)}` : '')}</div>
+        <div class="ann-prix"><b>${eur(a.prix)}${a.mode === 'location' ? ' par mois' : ''}</b><span>${a.mode === 'location' ? `${num(a.prix / a.surface, 1)} €/m²` : eurM2(a.prix / a.surface)}</span>${v != null && v !== 0 ? `<span class="${v < 0 ? 'pos' : 'neg'}">${signedPct(v)} depuis la saisie</span>` : ''}</div>
+        <div class="ann-verdict">${verdict}</div>
+      </div>
+      ${carac.length ? meta(...carac.map(esc)) : ''}
       ${retard ? `<p class="remind">${icon('eye')}Vérifié il y a ${joursDepuis(a.verifieLe || a.creeLe)} jours : l'annonce est-elle toujours en ligne, le prix a-t-il changé ?</p>` : ''}
       <details${ouverts.has(a.id) ? ' open' : ''} data-d="${esc(a.id)}"><summary>Détails, statut et notes</summary>
         <div class="grid2"><div class="field"><label for="st-${esc(a.id)}">Statut</label><div class="inp"><select id="st-${esc(a.id)}" data-act="statut">${STATUTS.map((s) => `<option value="${s.id}"${s.id === a.statut ? ' selected' : ''}>${esc(s.nom)}</option>`).join('')}</select></div></div>
@@ -113,7 +129,7 @@ export async function render(root) {
         ${(a.historique || []).length > 1 ? `<p class="muted">Historique : ${(a.historique || []).map((h) => `${esc(frDate(h.date))} ${eur(h.prix)}`).join(' → ')}</p>` : ''}
         ${(a.sources || []).length > 1 ? `<p class="muted">Cette annonce est publiée sur ${a.sources.length} sites :</p><div class="chips">${a.sources.map((x) => (x.url ? `<a class="chip" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.portail || 'Lien')}</a>` : `<span class="chip">${esc(x.portail)}</span>`)).join('')}</div>` : ''}
         <p class="muted">Ajoutée le ${esc(frDate(a.creeLe))}</p>
-        <div class="actions">${a.url ? `<a class="btn ghost" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${icon('external')}Ouvrir l'annonce</a>` : ''}${a.mode === 'vente' ? `<a class="btn ghost" href="#credit?prix=${a.prix}&insee=${esc(a.insee || '')}">${icon('calc')}Crédit</a>` : ''}<button class="btn danger" data-act="suppr">${icon('trash')}Supprimer</button></div>
+        <div class="actions">${a.url ? `<a class="btn ghost" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${icon('external')}Ouvrir l'annonce</a>` : ''}${a.mode === 'vente' ? `<a class="btn ghost" href="#credit?prix=${a.prix}&insee=${esc(a.insee || '')}">${icon('calc')}Crédit</a><a class="btn ghost" href="#estimer?annonce=${esc(a.id)}">Estimer finement</a>` : ''}<button class="btn danger" data-act="suppr">${icon('trash')}Supprimer</button></div>
       </details></article>`;
   }
 
@@ -129,7 +145,7 @@ export async function render(root) {
       const r = evals.get(a.id);
       return `<tr data-id="${esc(a.id)}"${choisies.has(a.id) ? ' class="choisie"' : ''}>
         ${selection ? `<td><input type="checkbox" data-act="sel"${choisies.has(a.id) ? ' checked' : ''} aria-label="Sélectionner"></td>` : ''}
-        <th scope="row" class="col-titre">${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.titre || a.type)}</a>` : esc(a.titre || a.type)}<small>${esc(a.communeNom || '')}${a.cp ? ' ' + esc(a.cp) : ''} · ${a.mode === 'location' ? 'location' : esc(a.type.toLowerCase())}</small></th>
+        <th scope="row" class="col-titre">${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.titre || a.type)}</a>` : esc(a.titre || a.type)}<small>${esc(a.communeNom || '')}${a.cp ? ' ' + esc(a.cp) : ''}, ${a.mode === 'location' ? 'location' : esc(a.type.toLowerCase())}</small></th>
         <td>${eur(a.prix)}</td><td>${num(a.surface)}</td><td>${a.mode === 'location' ? num(a.prix / a.surface, 1) : num(a.prix / a.surface)}</td><td>${a.pieces ?? '--'}</td><td>${a.chambres ?? '--'}</td><td>${a.annee ?? '--'}</td><td>${esc(a.dpe || '--')}</td>
         <td>${(a.extras || []).map((k) => esc((NOMS_EQUIP[k] || k).toLowerCase())).join(', ') || '--'}</td>
         <td>${r && r.ok ? `<b class="${r.ecart <= -5 ? 'pos' : r.ecart >= 5 ? 'neg' : ''}">${r.ecart > 0 ? '+' : ''}${num(r.ecart, 0)} %</b>` : '--'}</td></tr>`;
@@ -140,6 +156,10 @@ export async function render(root) {
   function afficherListe() {
     const l = visibles();
     const total = parStatut().length;
+    const sv = root.querySelector('#sel-veille');
+    if (sv) sv.innerHTML = optionsVeilles(scope, { toutes: true });
+    const dm = root.querySelector('#sel-demenager');
+    if (dm) dm.innerHTML = optionsVeilles('', { vide: 'Déplacer vers...' });
     root.querySelector('#compteur').textContent = total ? `${l.length} annonce${l.length > 1 ? 's' : ''} affichée${l.length > 1 ? 's' : ''} sur ${total}` : '';
     const nbf = nombreFiltres(filtres);
     root.querySelector('#nb-filtres').textContent = nbf ? ` (${nbf})` : '';
@@ -210,17 +230,17 @@ export async function render(root) {
 
   /* ---------- Recherches enregistrees, sauvegarde ---------- */
   function listeRecherches() {
-    const l = recherches.list();
+    const l = recherches.list().filter(dansScope);
     if (!l.length) return carte('Mes recherches', '<p class="muted">Aucune recherche enregistrée. Dans « Marché », choisissez une ville puis « Suivre cette recherche » : vous retrouverez ici les liens vers tous les sites.</p>');
-    return carte('Mes recherches', `<ul class="searches">${l.map((r) => `<li data-r="${esc(r.id)}"><details><summary><b>${esc(r.nom)}</b> · ${r.mode === 'location' ? 'location' : 'achat'}${r.type ? ' · ' + esc(r.type.toLowerCase()) : ''}</summary>
+    return carte('Mes recherches', `<ul class="searches">${l.map((r) => `<li data-r="${esc(r.id)}"><details><summary><b>${esc(r.nom)}</b>, ${r.mode === 'location' ? 'location' : 'achat'}${r.type ? ', ' + esc(r.type.toLowerCase()) : ''}</summary>
       <ul class="links">${liensRecherche(r, r.mode).map((p) => `<li><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.nom)}<small>${p.direct ? 'recherche directe' : 'accueil'}</small>${icon('external')}</a></li>`).join('')}</ul>
       <div class="actions"><a class="btn ghost" href="#marche?insee=${esc(r.insee)}">${icon('chart')}Voir le marché</a><button class="btn danger" data-act="suppr-r">${icon('trash')}Retirer</button></div></details></li>`).join('')}</ul>`);
   }
 
   function sauvegarde() {
-    return carte('Sauvegarde', `<p class="muted">Vos annonces restent sur cet appareil. Exportez-les pour les retrouver sur un autre appareil ou les ouvrir dans un tableur.</p>
+    return carte('Sauvegarde', `<p class="muted">Vos annonces restent sur cet appareil. Exportez ${scope === 'toutes' ? 'toutes vos veilles' : 'cette veille'} pour la retrouver sur un autre appareil ou l'ouvrir dans un tableur. Supprimer une veille la retire aussi de vos futures sauvegardes.</p>
       <div class="actions"><button class="btn ghost" id="exp-json">${icon('download')}Sauvegarde (.json)</button><button class="btn ghost" id="exp-csv">${icon('download')}Tableur (.csv)</button><label class="btn ghost file">${icon('upload')}Restaurer<input type="file" id="imp" accept="application/json,.json" hidden></label></div>
-      <div class="actions"><a class="btn ghost" href="#importer">${icon('scan')}Importer plusieurs annonces</a><a class="btn ghost" href="#alertes">${icon('eye')}Alertes e-mail</a></div>`);
+      <div class="actions"><a class="btn ghost" href="#importer">${icon('scan')}Importer plusieurs annonces</a><a class="btn ghost" href="#alertes">${icon('eye')}Alertes e-mail</a><a class="btn ghost" href="#veilles">Gérer mes veilles et la sauvegarde</a></div>`);
   }
 
   function barre() {
@@ -228,12 +248,14 @@ export async function render(root) {
       <span id="nb-sel">0 sélectionnée</span>
       <button type="button" class="btn ghost" id="sel-tout">Tout</button><button type="button" class="btn ghost" id="sel-rien">Aucune</button>
       <select id="sel-statut" data-bulk aria-label="Changer le statut"><option value="">Statut...</option>${STATUTS.map((s) => `<option value="${s.id}">${esc(s.nom)}</option>`).join('')}</select>
+      <select id="sel-demenager" data-bulk aria-label="Déplacer vers une autre veille">${optionsVeilles('', { vide: 'Déplacer vers...' })}</select>
       <button type="button" class="btn danger" id="sel-suppr" data-bulk>${icon('trash')}Supprimer</button></div>`;
   }
 
   function dessiner() {
     const y = window.scrollY;
-    root.innerHTML = tete() + '<div id="liste"></div>' + listeRecherches() + sauvegarde() + barre();
+    root.innerHTML = tete() + `<div class="cols"><aside class="side avant" id="cote"><h3 class="side-titre">Filtres</h3>${panneauFiltres()}</aside><div id="liste"></div></div>` + listeRecherches() + sauvegarde() + barre();
+    if (window.matchMedia('(min-width: 1100px)').matches) root.querySelector('#filtres').open = true;
     afficherListe();
     brancher();
     window.scrollTo(0, y);
@@ -267,6 +289,18 @@ export async function render(root) {
   function brancher() {
     brancherSegments(root, 'seg-statut', (v) => { statut = v; store.set('reg.filtreVeille', v); dessiner(); });
     brancherSegments(root, 'seg-vue', (v) => { vue = v; store.set('reg.vueVeille', v); afficherListe(); });
+    brancherVeilleSelect(root.querySelector('#sel-veille'), (id) => { scope = id; veilles.ouvrir(id); choisies.clear(); dessiner(); });
+    const dem = root.querySelector('#sel-demenager');
+    dem.addEventListener('change', () => {
+      let cible = dem.value;
+      if (!cible) return;
+      if (cible === '__nouvelle') { const v = creerVeille(''); if (!v) { dem.value = ''; return; } cible = v.id; }
+      const ids = [...choisies];
+      veilles.deplacer(ids, cible);
+      toast(`${ids.length} annonce${ids.length > 1 ? 's' : ''} déplacée${ids.length > 1 ? 's' : ''} vers « ${(veilles.get(cible) || {}).nom} »`);
+      choisies.clear();
+      dessiner();
+    });
     root.querySelector('#tri').addEventListener('change', (e) => { tri = e.target.value; store.set('reg.triVeille', tri); afficherListe(); });
     root.querySelector('#btn-sel').addEventListener('click', () => basculerSelection(!selection));
     root.querySelector('#f-reset').addEventListener('click', reinitialiser);
@@ -349,6 +383,14 @@ export async function render(root) {
       const ligne = e.target.closest('.ann');
       if (!ligne) return;
       const id = ligne.dataset.id;
+      if (e.target.id && e.target.id.startsWith('c-veille-')) {
+        let cible = e.target.value;
+        if (cible === '__nouvelle') { const v = creerVeille(''); if (!v) { e.target.value = e.target.dataset.prev; return; } cible = v.id; }
+        veilles.deplacer([id], cible);
+        toast(`Rangée dans « ${(veilles.get(cible) || {}).nom} »`);
+        dessiner();
+        return;
+      }
       if (e.target.dataset.act === 'statut') { annonces.update(id, { statut: e.target.value }); if (statut !== 'tout') afficherListe(); return; }
       if (e.target.dataset.act === 'note') { annonces.update(id, { note: e.target.value.slice(0, 2000) }); return; }
       const f = e.target.dataset.f;
@@ -364,13 +406,13 @@ export async function render(root) {
       const b = e.target.closest('[data-act="suppr-r"]');
       if (b) { recherches.remove(b.closest('li[data-r]').dataset.r); dessiner(); }
     });
-    root.querySelector('#exp-json')?.addEventListener('click', () => telecharger(`veille-immo-${todayISO()}.json`, exporter()));
+    root.querySelector('#exp-json')?.addEventListener('click', () => telecharger(`veille-immo-${todayISO()}.json`, exporter(scope === 'toutes' ? null : scope)));
     root.querySelector('#exp-csv')?.addEventListener('click', () => {
-      const lignes = annonces.list().map((a) => {
+      const lignes = annonces.list().filter(dansScope).map((a) => {
         const r = evals.get(a.id);
         const v = variationPrix(a);
         return [a.titre, a.communeNom, a.cp, a.type, a.prix, a.surface, a.pieces, a.surface ? Math.round(a.prix / a.surface) : '', r && r.ok && a.mode === 'vente' ? Math.round(r.ecart * 10) / 10 : '', r && r.ok && a.mode === 'vente' ? r.score : '', a.dpe, (STATUTS.find((s) => s.id === a.statut) || {}).nom, v != null ? Math.round(v * 10) / 10 : '', a.url, a.note,
-          a.chambres, a.sdb, a.annee, a.etage, a.terrain, (ETATS.find(([k]) => k === a.etat) || [])[1], (CHAUFFAGES.find(([k]) => k === a.chauffage) || [])[1], (a.extras || []).map((k) => NOMS_EQUIP[k]).join(' / '), a.chargesAn, a.mode === 'location' ? 'Location' : 'Vente', categorie(r)];
+          a.chambres, a.sdb, a.annee, a.etage, a.terrain, (ETATS.find(([k]) => k === a.etat) || [])[1], (CHAUFFAGES.find(([k]) => k === a.chauffage) || [])[1], (a.extras || []).map((k) => NOMS_EQUIP[k]).join(' / '), a.chargesAn, a.mode === 'location' ? 'Location' : 'Vente', categorie(r), (veilles.get(veilles.idDe(a)) || {}).nom];
       });
       telecharger(`veille-immo-${todayISO()}.csv`, versCSV(lignes), 'text/csv;charset=utf-8');
     });

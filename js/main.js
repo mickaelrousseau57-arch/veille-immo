@@ -2,11 +2,15 @@
 
 import { $, store } from './util.js';
 import { icon } from './icons.js';
+import { annulationEnAttente, restaurerInstantane } from './state.js';
+import { toastAction } from './ui.js';
 
 const ECRANS = {
   marche: { titre: 'Marché', icone: 'chart', charger: () => import('./views/marche.js') },
   analyser: { titre: 'Analyser', icone: 'scan', charger: () => import('./views/analyser.js') },
+  veilles: { titre: 'Mes veilles', icone: 'eye', onglet: 'veille', masque: true, charger: () => import('./views/veilles.js') },
   alertes: { titre: 'Alertes e-mail', icone: 'eye', onglet: 'veille', masque: true, charger: () => import('./views/alertes.js') },
+  estimer: { titre: 'Estimer un bien', icone: 'scan', onglet: 'analyser', masque: true, charger: () => import('./views/estimer.js') },
   importer: { titre: 'Plusieurs annonces', icone: 'scan', onglet: 'analyser', masque: true, charger: () => import('./views/importer.js') },
   veille: { titre: 'Ma veille', icone: 'eye', charger: () => import('./views/veille.js') },
   credit: { titre: 'Crédit', icone: 'calc', charger: () => import('./views/credit.js') },
@@ -51,7 +55,7 @@ async function afficher() {
   const conteneur = document.createElement('div');
   conteneur.className = 'view-inner';
   vue.replaceChildren(conteneur);
-  document.title = `${ECRANS[nom].titre} · Veille immo`;
+  document.title = `${ECRANS[nom].titre}, Veille immo`;
   try {
     const mod = await ECRANS[nom].charger();
     if (mon !== seq) return;
@@ -83,6 +87,8 @@ function initSW() {
 
 initTheme();
 initTabs();
+const aAnnuler = annulationEnAttente();
+if (aAnnuler) setTimeout(() => toastAction('Toutes les données ont été effacées', 'Annuler', () => { restaurerInstantane(aAnnuler); location.hash = '#veille'; location.reload(); }, 15000), 400);
 traiterPartage();
 window.addEventListener('hashchange', afficher);
 afficher();

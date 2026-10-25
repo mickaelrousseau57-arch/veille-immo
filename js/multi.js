@@ -65,6 +65,33 @@ export function lireCollage(texte, mode = 'vente') {
   return { items: decouperTexte(t, mode), page: premiere ? premiere[0] : '', via: 'texte' };
 }
 
+/* Titre d'annonce. Les cartes des sites melangent le titre et des liens d'interface ("Simuler mon credit", "Contacter",
+   "Ajouter aux favoris"...) : on note chaque ligne et on ne garde que celle qui decrit un bien ; sinon on le construit. */
+const BRUIT = /simul|cr[ée]dit|contact|appeler|t[ée]l[ée]phone|voir\s+(?:le|la|l'|les|plus|tous)|ajouter|favori|partag|estim|mensualit|visite\s+virtuelle|vid[ée]o|photo|exclusivit|coup\s+de\s+c|nouveau|baisse\s+de\s+prix|d[ée]couvr|en\s+savoir|honoraires|frais|annonce\s+(?:sponsoris|similaire)|publicit|\bdpe\b|\bges\b|score|alerte|enregistrer|signaler|cookies?/i;
+const MOT_BIEN = /\b(?:appartement|appart|maison|villa|studio|duplex|triplex|loft|pavillon|long[èe]re|terrain|immeuble|propri[ée]t[ée]|ferme|chalet|bastide|h[ôo]tel\s+particulier|local)\b/i;
+const MOT_PIECES = /\b[TF]\s?\d\b|\d+\s*pi[èe]ces?/i;
+
+export function titreDe(texte) {
+  let meilleur = null;
+  String(texte || '').split('\n').map((l) => l.replace(/\s+[|·–—-]\s*(?:SeLoger|Logic-Immo|Bien'ici|PAP|Leboncoin|Orpi|Century 21|Figaro Immobilier)\b.*$/i, '').trim()).forEach((l, i) => {
+    if (l.length < 8 || l.length > 140 || /^https?:/.test(l) || PRIX_LIGNE.test(l) || /^[\d\s.,m²2€/]+$/.test(l)) return;
+    let score = 0;
+    if (MOT_BIEN.test(l)) score += 3;
+    if (MOT_PIECES.test(l)) score += 2;
+    if (BRUIT.test(l)) score -= 4;
+    if (score >= 3 && (!meilleur || score > meilleur.score + (i > 0 ? 0 : 0))) meilleur = { score, l };
+  });
+  return meilleur ? meilleur.l : '';
+}
+
+/* Titre construit a partir des champs lus : "Maison 7 pieces 179 m2 - Thionville". */
+export function titreAuto(a) {
+  return [a.type || 'Bien', a.pieces ? `${a.pieces} pièce${a.pieces > 1 ? 's' : ''}` : '', a.surface ? `${Math.round(a.surface)} m²` : ''].filter(Boolean).join(' ') + (a.communeNom ? ` - ${a.communeNom}` : '');
+}
+
+/* Un titre deja enregistre qui est en realite un texte d'interface (ancien import) ? */
+export const titreSuspect = (t) => !!t && BRUIT.test(t) && !MOT_BIEN.test(t) && !MOT_PIECES.test(t);
+
 /* Transforme les blocs en annonces. complete = prix et surface trouves. */
 export function lireAnnonces(items, { mode = 'vente', page = '' } = {}) {
   const out = [];
@@ -72,7 +99,7 @@ export function lireAnnonces(items, { mode = 'vente', page = '' } = {}) {
     const p = parseAnnonce(`${it.text}\n${it.url || ''}`, { mode });
     if (!p.prix) continue;
     const url = p.url || page || '';
-    const titre = it.text.split('\n').map((l) => l.trim()).find((l) => l.length > 8 && !PRIX_LIGNE.test(l) && !/^https?:/.test(l)) || '';
+    const titre = titreDe(it.text);
     const portail = portailDe(url) || portailDe(page);
     out.push({ mode, type: p.type || 'Appartement', typeIncertain: !p.type, prix: p.prix, surface: p.surface, pieces: p.pieces, dpe: p.dpe, terrain: p.terrain, ...champsDe(p), cp: p.cp, url: it.url || (p.url || ''), titre: titre.slice(0, 120), portail: portail || '', complete: !!(p.prix && p.surface) });
   }

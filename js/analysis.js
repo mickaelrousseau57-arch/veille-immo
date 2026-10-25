@@ -17,6 +17,7 @@ export function choisirStats(bloc, pieces = null) {
   else if (bloc.q3 && bloc.n3 >= 3) { q = bloc.q3; n = bloc.n3; fenetre = '36 derniers mois'; }
   else if (bloc.q && bloc.n >= 3) { q = bloc.q; n = bloc.n; fenetre = '12 derniers mois'; }
   else return null;
+  const medianeBrute = q[2];
   let ajustePieces = null;
   if (pieces && bloc.r && bloc.q3) {
     const k = String(Math.min(Math.round(pieces), 5));
@@ -29,7 +30,7 @@ export function choisirStats(bloc, pieces = null) {
   }
   if (bloc.libelle) fenetre = bloc.libelle;
   const fiabilite = bloc.fiabilite || (n >= 100 ? 'bonne' : n >= 30 ? 'correcte' : n >= 10 ? 'moyenne' : 'faible');
-  return { q, n, fenetre, fiabilite, ajustePieces, mediane: q[2] };
+  return { q, n, fenetre, fiabilite, ajustePieces, mediane: q[2], medianeBrute, surfaceType: bloc.s || null };
 }
 
 /* Position (0 a 100) d'une valeur dans la distribution decrite par [p10, p25, p50, p75, p90]. */

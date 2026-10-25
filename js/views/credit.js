@@ -97,7 +97,7 @@ export async function render(root, params = {}) {
           surf = (sa || sh) ? `<p class="line">À ${esc(commune.nom)}, ce budget de ${eur(prix)} correspond à ${[sa && `environ <b>${num(surfaceAchetable(prix, sa.mediane))} m²</b> d'appartement (${eurM2(sa.mediane)})`, sh && `<b>${num(surfaceAchetable(prix, sh.mediane))} m²</b> de maison (${eurM2(sh.mediane)})`].filter(Boolean).join(' ou ')}.</p>` : '';
         } catch { /* donnees de marche indisponibles : on n'affiche pas la surface */ }
       }
-      out.innerHTML = carte('Résultat', `<div class="kpis">
+      out.innerHTML = carte('Résultat', `<div class="figs">
           ${kpi('Mensualité avec assurance', eur(Math.round(r.mensualiteTotale)), `dont assurance ${eur(Math.round(r.assurance))}`)}
           ${kpi('Capital emprunté', eur(Math.round(r.capital)), `projet total ${eur(Math.round(r.coutProjet))}`)}
           ${kpi('Coût du crédit', eur(Math.round(r.coutCredit)), `intérêts ${eur(Math.round(r.interets))} + assurance ${eur(Math.round(r.coutAssurance))}`)}
@@ -120,7 +120,7 @@ export async function render(root, params = {}) {
         if (sa || sh) surf = `<p class="line">À ${esc(commune.nom)} : environ ${[sa && `<b>${num(surfaceAchetable(c.prixMax, sa.mediane))} m²</b> en appartement (${eurM2(sa.mediane)})`, sh && `<b>${num(surfaceAchetable(c.prixMax, sh.mediane))} m²</b> en maison (${eurM2(sh.mediane)})`].filter(Boolean).join(' ou ')}.</p>`;
       } catch { /* donnees de marche indisponibles */ }
     } else if (!commune) surf = '<p class="note">Choisissez une commune dans « Marché » pour voir la surface que ce budget permet d\'acheter.</p>';
-    out.innerHTML = carte('Résultat', `<div class="kpis">
+    out.innerHTML = carte('Résultat', `<div class="figs">
         ${kpi('Mensualité maximale', eur(Math.round(c.mensualiteMax)), `${ENDETTEMENT_MAX} % des revenus${num0(s.charges) ? ' moins vos crédits' : ''}, assurance comprise`)}
         ${kpi('Montant empruntable', eur(Math.round(c.capital)), `sur ${num(p.duree, 0)} ans à ${num(p.tx, 2)} %`)}
         ${kpi('Budget total', eur(Math.round(c.budget)), 'emprunt + apport')}

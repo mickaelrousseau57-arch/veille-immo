@@ -3,10 +3,14 @@
 import { esc, num, store } from './util.js';
 import { chercher } from './data.js';
 import { icon } from './icons.js';
+import { veilles } from './state.js';
 
 export const badge = (tone, texte) => `<span class="badge ${tone}">${esc(texte)}</span>`;
 
-export const kpi = (label, valeur, sous = '') => `<div class="kpi"><p class="kpi-l">${label}</p><p class="kpi-v">${valeur}</p>${sous ? `<p class="kpi-s">${sous}</p>` : ''}</div>`;
+export const kpi = (label, valeur, sous = '') => `<div class="fig"><p class="fig-v">${valeur}</p><p class="fig-l">${label}</p>${sous ? `<p class="fig-s">${sous}</p>` : ''}</div>`;
+
+/* Ligne d'informations : des elements separes par un trait fin (pas de points medians). Les parties vides sont ignorees. */
+export const meta = (...parts) => `<p class="meta">${parts.filter((x) => x !== '' && x != null && x !== false).map((x) => `<span>${x}</span>`).join('')}</p>`;
 
 export const carte = (titre, corps, { classe = '', aide = '' } = {}) => `<section class="card ${classe}">${titre ? `<h2>${titre}${aide ? `<span class="sub">${aide}</span>` : ''}</h2>` : ''}${corps}</section>`;
 
@@ -100,7 +104,7 @@ export function brancherSelecteur(root, id, onPick) {
     if (mon !== seq) return;
     res = r;
     if (!r.length) { ul.innerHTML = q.trim().length >= 2 ? '<li class="empty">Aucune commune trouvée</li>' : ''; ul.hidden = q.trim().length < 2; return; }
-    ul.innerHTML = r.map((c, i) => `<li role="option"><button type="button" data-i="${i}"><span>${esc(c.nom)}</span><small>${esc(c.cps.slice(0, 3).join(' · '))}${c.cps.length > 3 ? '...' : ''} · ${esc(c.dep)}</small></button></li>`).join('');
+    ul.innerHTML = r.map((c, i) => `<li role="option"><button type="button" data-i="${i}"><span>${esc(c.nom)}</span><small>${esc(c.cps.slice(0, 3).join(', '))}${c.cps.length > 3 ? '...' : ''}, ${esc(c.dep)}</small></button></li>`).join('');
     ul.hidden = false;
     inp.setAttribute('aria-expanded', 'true');
   };
@@ -141,7 +145,7 @@ export const recents = {
 export const variationTexte = (v) => (v == null ? '--' : `${v > 0 ? '+' : ''}${num(v, 1)} %`);
 
 /* Bascule entre l'analyse d'une annonce et l'import de plusieurs annonces (liens, pas de boutons : l'adresse change). */
-export const basculeAnalyse = (actif) => `<div class="seg nav" role="tablist"><a href="#analyser" role="tab" aria-selected="${actif === 'une'}">Une annonce</a><a href="#importer" role="tab" aria-selected="${actif === 'plusieurs'}">Plusieurs annonces</a></div>`;
+export const basculeAnalyse = (actif) => `<div class="seg nav" role="tablist"><a href="#analyser" role="tab" aria-selected="${actif === 'une'}">Une annonce</a><a href="#importer" role="tab" aria-selected="${actif === 'plusieurs'}">Plusieurs</a><a href="#estimer" role="tab" aria-selected="${actif === 'estimer'}">Estimer un bien</a></div>`;
 
 /* Message avec une action (annuler une suppression, par exemple). */
 let toastActionTimer = null;
@@ -161,4 +165,39 @@ export function toastAction(texte, libelle, action, duree = 8000) {
   t.classList.add('show');
   clearTimeout(toastActionTimer);
   toastActionTimer = setTimeout(() => t.classList.remove('show'), duree);
+}
+
+/* ---------- Choix de la veille ---------- */
+const nbAnn = (id) => veilles.compter(id).annonces;
+
+export function optionsVeilles(valeur, { toutes = false, nouvelle = true, vide = '' } = {}) {
+  return `${vide ? `<option value="">${esc(vide)}</option>` : ''}${toutes ? `<option value="toutes"${valeur === 'toutes' ? ' selected' : ''}>Toutes les annonces</option>` : ''}${veilles.list().map((v) => `<option value="${esc(v.id)}"${v.id === valeur ? ' selected' : ''}>${esc(v.nom)} (${nbAnn(v.id)})</option>`).join('')}${nouvelle ? '<option value="__nouvelle">Nouvelle veille...</option>' : ''}`;
+}
+
+export function veilleSelectHTML(id, valeur, { label = 'Veille', toutes = false } = {}) {
+  return `<div class="field"><label for="${id}">${label}</label><div class="inp"><select id="${id}" data-prev="${esc(valeur)}">${optionsVeilles(valeur, { toutes })}</select></div></div>`;
+}
+
+/* Demande le nom d'une nouvelle veille ; retourne la veille creee ou null. */
+export function creerVeille(nomParDefaut = '') {
+  const nom = window.prompt('Nom de la nouvelle veille (par exemple une ville ou un projet)', nomParDefaut);
+  if (nom == null || !nom.trim()) return null;
+  return veilles.add(nom);
+}
+
+/* Branche un selecteur de veille : onChange(idVeille) ; "Nouvelle veille..." cree la veille puis la selectionne. */
+export function brancherVeilleSelect(select, onChange, nomParDefaut = '') {
+  if (!select) return;
+  select.addEventListener('change', () => {
+    if (select.value !== '__nouvelle') { select.dataset.prev = select.value; onChange(select.value); return; }
+    const v = creerVeille(typeof nomParDefaut === 'function' ? nomParDefaut() : nomParDefaut);
+    if (!v) { select.value = select.dataset.prev; return; }
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = `${v.nom} (0)`;
+    select.insertBefore(opt, select.querySelector('option[value="__nouvelle"]'));
+    select.value = v.id;
+    select.dataset.prev = v.id;
+    onChange(v.id);
+  });
 }

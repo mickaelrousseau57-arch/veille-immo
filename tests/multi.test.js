@@ -94,3 +94,27 @@ test('lireAnnonces : caracteristiques extraites de chaque bloc', () => {
   assert.equal(l[0].annee, 1985);
   assert.deepEqual([...l[0].extras].sort(), ['jardin', 'piscine']);
 });
+
+import { titreDe, titreAuto, titreSuspect } from '../js/multi.js';
+
+test('titre : le lien d\'interface "Simuler mon credit immobilier" n\'est jamais le titre', () => {
+  const bloc = 'Simuler mon crédit immobilier\nMaison 7 pièces - 179 m²\nThionville (57100)\n345 000 €\nContacter';
+  assert.equal(titreDe(bloc), 'Maison 7 pièces - 179 m²');
+  const seul = lireAnnonces([{ url: '', text: 'Simuler mon crédit immobilier\n64 m² Nancy 54000\n139 000 €' }], { mode: 'vente' });
+  assert.equal(seul[0].titre, ''); // pas de titre fiable : il sera construit
+});
+
+test('titre : nom du site retire, lignes de bruit ignorees', () => {
+  assert.equal(titreDe('Achat appartement 3 pièces 65 m² Cattenom (57570) | SeLoger\n189 000 €'), 'Achat appartement 3 pièces 65 m² Cattenom (57570)');
+  assert.equal(titreDe('Ajouter aux favoris\nVoir le téléphone\nExclusivité\nVilla avec piscine\n450 000 €'), 'Villa avec piscine');
+  assert.equal(titreDe('Nouveau\nVoir plus\n250 000 €'), '');
+});
+
+test('titreAuto et titreSuspect', () => {
+  assert.equal(titreAuto({ type: 'Maison', pieces: 7, surface: 179.4, communeNom: 'Thionville' }), 'Maison 7 pièces 179 m² - Thionville');
+  assert.equal(titreAuto({ type: 'Appartement', pieces: 1, surface: 24 }), 'Appartement 1 pièce 24 m²');
+  assert.equal(titreSuspect('Simuler mon crédit immobilier'), true);
+  assert.equal(titreSuspect('Maison 7 pièces - 179 m²'), false);
+  assert.equal(titreSuspect('T3 lumineux centre'), false);
+  assert.equal(titreSuspect(''), false);
+});
