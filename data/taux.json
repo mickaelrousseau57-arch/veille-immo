@@ -1,0 +1,12 @@
+{
+  "maj": "2026-10-15",
+  "source": "Observatoire Crédit Logement / CSA, taux moyens hors assurance (par durée : août 2026)",
+  "global": { "taux": 3.40, "mois": "septembre 2026", "note": "Taux moyen toutes durées confondues" },
+  "durees": [
+    { "duree": 15, "taux": 3.14 },
+    { "duree": 20, "taux": 3.27 },
+    { "duree": 25, "taux": 3.35 }
+  ],
+  "assurance": 0.30,
+  "avertissement": "Aucun organisme ne publie de taux moyen par code postal : les taux dépendent surtout de la durée, de l'apport et du profil de l'emprunteur. Utilisez l'écart pour reproduire l'offre de votre banque ou de votre courtier."
+}
