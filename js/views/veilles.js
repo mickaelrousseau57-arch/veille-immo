@@ -4,6 +4,12 @@ import { esc, todayISO, frDate } from '../util.js';
 import { carte, champ, toast, toastAction, telecharger, lire } from '../ui.js';
 import { annonces, recherches, veilles, exporter, importer, remiseAZero, restaurerInstantane, toutRemettreAZero } from '../state.js';
 import { icon } from '../icons.js';
+import { depotValide, envoyer, recuperer, remplacerLocal } from '../sync.js';
+
+const lireSync = () => { try { return JSON.parse(localStorage.getItem('immo.sync') || '{}'); } catch { return {}; } };
+const ecrireSync = (o) => { try { localStorage.setItem('immo.sync', JSON.stringify(o)); } catch { /* stockage indisponible */ } };
+const lirePhrase = () => { try { return sessionStorage.getItem('immo-phrase') || ''; } catch { return ''; } };
+const retenirPhrase = (p) => { try { sessionStorage.setItem('immo-phrase', p); } catch { /* tant pis */ } };
 
 export async function render(root) {
   function ligne(v) {
@@ -20,12 +26,28 @@ export async function render(root) {
   function dessiner() {
     const l = veilles.list();
     const total = annonces.list().length;
+    const sync = lireSync();
     root.innerHTML = carte('Mes veilles', `
       <p class="lead">Une veille par ville ou par projet : vous rangez vos annonces où vous voulez et vous ouvrez chaque veille quand vous le souhaitez. Supprimer une veille supprime aussi ses annonces et ses recherches, et les retire de vos futures sauvegardes.</p>
       <ul class="veilles">${l.map(ligne).join('')}</ul>
       <div class="actions"><a class="btn" href="#veille?v=toutes">Voir toutes les annonces (${total})</a></div>`)
       + carte('Nouvelle veille', `${champ({ id: 'nv-nom', label: 'Nom (une ville, un projet...)', valeur: '', attrs: 'placeholder="Metz, Thionville, investissement..." maxlength="60"' })}
         <div class="actions"><button type="button" class="btn primary" id="nv-creer">${icon('plus')}Créer la veille</button></div>`)
+      + carte('Synchroniser mes appareils', `
+        <p class="muted">Retrouvez les mêmes veilles sur votre téléphone, votre tablette et votre ordinateur. Vos données sont chiffrées sur l'appareil avec une phrase secrète, puis déposées dans un dépôt GitHub privé qui est le vôtre. Personne d'autre ne peut les lire, et la phrase secrète n'est jamais enregistrée.</p>
+        <details><summary>Mise en place, à faire une seule fois</summary>
+          <ol class="steps">
+            <li>Sur GitHub, créez un dépôt privé (par exemple « veille-immo-sync ») en cochant « Add a README file ».</li>
+            <li>Dans GitHub, ouvrez Settings, Developer settings, Personal access tokens, Fine-grained tokens, puis Generate new token. Choisissez « Only select repositories » et ce dépôt, puis dans Repository permissions mettez Contents sur « Read and write ». La clé ne peut alors rien faire d'autre.</li>
+            <li>Sur chaque appareil, saisissez ci-dessous le nom du dépôt, la clé et la même phrase secrète. La clé est gardée sur l'appareil.</li>
+          </ol>
+        </details>
+        ${champ({ id: 'sy-depot', label: 'Dépôt (propriétaire/nom)', valeur: sync.depot || '', attrs: 'placeholder="votre-compte/veille-immo-sync" autocomplete="off" autocapitalize="off" spellcheck="false"' })}
+        ${champ({ id: 'sy-token', label: 'Clé d\'accès GitHub', type: 'password', valeur: sync.token || '', attrs: 'autocomplete="off"' })}
+        ${champ({ id: 'sy-phrase', label: 'Phrase secrète (la même sur tous vos appareils)', type: 'password', valeur: lirePhrase(), attrs: 'autocomplete="off"', aide: 'Si vous la perdez, les données déposées sont définitivement illisibles : gardez aussi une sauvegarde .json.' })}
+        <div class="actions"><button type="button" class="btn primary" id="sy-envoi">${icon('upload')}Envoyer vers le dépôt</button>
+          <button type="button" class="btn" id="sy-recup">${icon('download')}Récupérer depuis le dépôt</button></div>
+        <p class="note" id="sy-etat">${sync.dernier ? `Dernière synchronisation sur cet appareil : ${esc(sync.dernier)}.` : 'Rien n\'a encore été synchronisé depuis cet appareil.'} « Envoyer » remplace le contenu du dépôt par cet appareil ; « Récupérer » remplace cet appareil par le dépôt (vous pouvez annuler). Pensez à envoyer avant de changer d'appareil.</p>`)
       + carte('Sauvegarde et remise à zéro', `
         <p class="muted">Tout reste sur cet appareil. Sauvegardez avant d'effacer ou de changer d'appareil.</p>
         <div class="actions"><button type="button" class="btn ghost" id="bk-json">${icon('download')}Tout sauvegarder (.json)</button>
@@ -74,6 +96,38 @@ export async function render(root) {
       const f = e.target.files[0];
       if (!f) return;
       try { const n = importer(await f.text()); toast(`${n} annonce(s) restaurée(s)`); dessiner(); } catch (err) { toast(err.message); }
+    });
+
+    const reglagesSync = () => {
+      const depot = lire(root, 'sy-depot').trim();
+      const token = lire(root, 'sy-token').trim();
+      const phrase = lire(root, 'sy-phrase');
+      if (!depotValide(depot)) { toast('Indiquez le dépôt sous la forme compte/nom'); return null; }
+      if (!token) { toast('Collez la clé d\'accès GitHub'); return null; }
+      if (phrase.length < 8) { toast('Choisissez une phrase secrète d\'au moins 8 caractères'); return null; }
+      ecrireSync({ ...lireSync(), depot, token });
+      retenirPhrase(phrase);
+      return { reg: { depot, token }, phrase };
+    };
+    const occupe = (b, oui) => { root.querySelectorAll('#sy-envoi, #sy-recup').forEach((x) => { x.disabled = oui; }); b.setAttribute('aria-busy', String(oui)); };
+    const marquer = () => { const d = new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }); ecrireSync({ ...lireSync(), dernier: d }); root.querySelector('#sy-etat').textContent = `Dernière synchronisation sur cet appareil : ${d}.`; };
+    root.querySelector('#sy-envoi').addEventListener('click', async (e) => {
+      const r = reglagesSync(); if (!r) return;
+      const b = e.currentTarget; occupe(b, true);
+      try { await envoyer(r.reg, r.phrase); marquer(); toast('Données envoyées vers le dépôt'); } catch (err) { toast(err.message); } finally { occupe(b, false); }
+    });
+    root.querySelector('#sy-recup').addEventListener('click', async (e) => {
+      const r = reglagesSync(); if (!r) return;
+      const b = e.currentTarget; occupe(b, true);
+      try {
+        const res = await recuperer(r.reg, r.phrase);
+        if (!res) { toast('Rien dans le dépôt pour l\'instant : envoyez d\'abord depuis l\'appareil qui a vos données'); return; }
+        const n = Object.keys(res.donnees).length;
+        if (!window.confirm(`Remplacer les données de cet appareil par celles du dépôt (envoyées le ${res.maj ? new Date(res.maj).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'date inconnue'}) ?\n\nVous pourrez annuler pendant quelques secondes.`)) return;
+        const avant = remplacerLocal(res.donnees);
+        marquer(); dessiner();
+        toastAction(`Données récupérées (${n} éléments)`, 'Annuler', () => { remplacerLocal(avant); toast('Données précédentes rétablies'); dessiner(); }, 12000);
+      } catch (err) { toast(err.message); } finally { occupe(b, false); }
     });
 
     root.querySelector('#raz-veilles').addEventListener('click', () => {
