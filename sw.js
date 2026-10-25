@@ -1,7 +1,7 @@
 /* Mise en cache de l'application pour un lancement rapide et hors ligne.
    Reseau d'abord (une mise a jour publiee est visible des l'ouverture suivante), cache en secours.
    Les fonds de carte (autre domaine) ne passent pas par ici. */
-const CACHE = 'immo-shell-v6';
+const CACHE = 'immo-shell-v7';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png',
   'js/main.js', 'js/util.js', 'js/icons.js', 'js/data.js', 'js/state.js', 'js/search.js', 'js/analysis.js', 'js/credit.js', 'js/parse.js', 'js/portals.js',

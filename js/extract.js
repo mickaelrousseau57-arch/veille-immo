@@ -60,12 +60,34 @@ export function extraireAnnonces(doc) {
   return /€/.test(texte) || SURF.test(texte) ? [{ url: doc.location.href, text: texte }] : [];
 }
 
-/* Code du marque-page : a glisser dans la barre de favoris, ou a coller comme adresse d'un favori. */
+/* Cumul d'une page de resultats a l'autre. Fonction AUTONOME, copiee dans le marque-page.
+   `ancien` est le cumul memorise dans l'onglet (sessionStorage du site, donc propre a cet onglet et efface a sa fermeture) :
+   { t: heure, items: [...] }. Il est ignore au bout de 30 minutes. Une annonce deja vue (meme lien) est mise a jour, pas doublee. */
+export function cumuler(ancien, items, maintenant) {
+  const MAX = 600;
+  const frais = ancien && ancien.items && maintenant - ancien.t < 30 * 60 * 1000 ? ancien.items : [];
+  const index = new Map();
+  frais.forEach((x) => index.set(x.url, x));
+  let nouvelles = 0;
+  items.forEach((x) => { if (!index.has(x.url)) nouvelles++; index.set(x.url, x); });
+  const tous = Array.from(index.values()).slice(-MAX);
+  return { items: tous, nouvelles, dejaVues: items.length - nouvelles, avant: frais.length };
+}
+
+/* Code du marque-page : a glisser dans la barre de favoris, ou a coller comme adresse d'un favori.
+   Sur une page de resultats, chaque clic ajoute les annonces affichees a celles deja captees dans cet onglet
+   (page suivante, puis nouveau clic) et copie le tout. Sur une annonce seule, rien n'est cumule. */
 export function codeMarquePage() {
   const code = `(async()=>{var r=(${extraireAnnonces.toString()})(document);`
-    + `var j='IMMOVEILLE:'+JSON.stringify({v:1,page:location.href,items:r});`
     + `if(!r.length){alert('Aucune annonce reconnue sur cette page. Faites defiler la page pour afficher les annonces, puis recommencez.');return}`
-    + `try{await navigator.clipboard.writeText(j);alert(r.length+(r.length>1?' annonces copiees':' annonce copiee')+'. Ouvrez Veille immo : elle se remplit toute seule (sinon collez le contenu).')}`
+    + `var items=r,msg='',K='immoveille.cumul';`
+    + `if(r.length>1){var prev=null;try{prev=JSON.parse(sessionStorage.getItem(K)||'null')}catch(e){}`
+    + `var c=(${cumuler.toString()})(prev,r,Date.now());items=c.items;`
+    + `try{sessionStorage.setItem(K,JSON.stringify({t:Date.now(),items:items}))}catch(e){}`
+    + `msg=c.nouvelles+' nouvelles annonces ajoutees ('+c.dejaVues+' deja captees). Total : '+items.length+'. Passez a la page suivante puis recliquez, ou ouvrez Veille immo.'}`
+    + `else msg='1 annonce copiee. Ouvrez Veille immo : elle se remplit toute seule.';`
+    + `var j='IMMOVEILLE:'+JSON.stringify({v:1,page:location.href,items:items});`
+    + `try{await navigator.clipboard.writeText(j);alert(msg+(r.length>1?' (Le cumul est efface apres 30 minutes.)':''))}`
     + `catch(e){prompt('Copiez ce texte (Ctrl+C), puis collez-le dans Veille immo :',j)}})()`;
   return 'javascript:' + encodeURIComponent(code);
 }

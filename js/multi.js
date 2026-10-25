@@ -4,7 +4,7 @@ import { parseAnnonce, portailDe } from './parse.js';
 import { champsDe, CHAMPS } from './caracteristiques.js';
 
 export const PREFIXE = 'IMMOVEILLE:';
-const MAX_ITEMS = 300;
+const MAX_ITEMS = 600;
 
 const PRIX_LIGNE = /(\d{1,3}(?:[ .]\d{3})+|\d{3,9})(?:[.,]\d{1,2})?\s*(?:€|euros?\b)(?!\s*(?:\/|par|le)\s*m\s?[²2])/i;
 
