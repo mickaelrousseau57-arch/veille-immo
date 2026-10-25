@@ -142,3 +142,23 @@ export const variationTexte = (v) => (v == null ? '--' : `${v > 0 ? '+' : ''}${n
 
 /* Bascule entre l'analyse d'une annonce et l'import de plusieurs annonces (liens, pas de boutons : l'adresse change). */
 export const basculeAnalyse = (actif) => `<div class="seg nav" role="tablist"><a href="#analyser" role="tab" aria-selected="${actif === 'une'}">Une annonce</a><a href="#importer" role="tab" aria-selected="${actif === 'plusieurs'}">Plusieurs annonces</a></div>`;
+
+/* Message avec une action (annuler une suppression, par exemple). */
+let toastActionTimer = null;
+export function toastAction(texte, libelle, action, duree = 8000) {
+  let t = document.getElementById('toast-action');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast-action';
+    t.setAttribute('role', 'status');
+    document.body.appendChild(t);
+  }
+  t.innerHTML = '<span></span><button type="button"></button>';
+  t.firstChild.textContent = texte;
+  const b = t.querySelector('button');
+  b.textContent = libelle;
+  b.onclick = () => { clearTimeout(toastActionTimer); t.classList.remove('show'); action(); };
+  t.classList.add('show');
+  clearTimeout(toastActionTimer);
+  toastActionTimer = setTimeout(() => t.classList.remove('show'), duree);
+}

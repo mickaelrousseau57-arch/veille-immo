@@ -78,3 +78,19 @@ test('memeBien : criteres', () => {
   assert.equal(memeBien(base, { ...base, prix: 102000, surface: 51 }), true);
   assert.equal(memeBien({ ...base, url: 'https://x/1' }, { ...base, prix: 1, surface: 1, url: 'https://x/1' }), true);
 });
+
+test('regrouper : les caracteristiques se completent entre les sites', () => {
+  const base = { mode: 'vente', type: 'Maison', prix: 250000, surface: 120, cp: '57570', extras: ['jardin'], chambres: null, annee: 1990 };
+  const g = regrouper([{ ...base, portail: 'A', url: 'https://a/1' }, { ...base, portail: 'B', url: 'https://b/2', chambres: 4, annee: null, extras: ['piscine', 'jardin'] }]);
+  assert.equal(g.length, 1);
+  assert.equal(g[0].chambres, 4);
+  assert.equal(g[0].annee, 1990);
+  assert.deepEqual([...g[0].extras].sort(), ['jardin', 'piscine']);
+});
+
+test('lireAnnonces : caracteristiques extraites de chaque bloc', () => {
+  const l = lireAnnonces([{ url: '', text: 'Maison 5 pièces 110 m²\n4 chambres, jardin, piscine, construite en 1985\nLaxou 54520\n285 000 €' }], { mode: 'vente' });
+  assert.equal(l[0].chambres, 4);
+  assert.equal(l[0].annee, 1985);
+  assert.deepEqual([...l[0].extras].sort(), ['jardin', 'piscine']);
+});

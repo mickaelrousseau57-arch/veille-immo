@@ -95,3 +95,8 @@ test('lien : type et nombre de pieces lus dans le chemin', () => {
   assert.equal(b.type, 'Maison');
   assert.equal(b.pieces, 5);
 });
+
+test('"à louer" et "à vendre" reconnus meme precedes d\'un espace', () => {
+  assert.equal(parseAnnonce('Studio à louer 24 m² 520 €').mode, 'location');
+  assert.equal(parseAnnonce('Maison à vendre 100 m² 250 000 €').mode, 'vente');
+});

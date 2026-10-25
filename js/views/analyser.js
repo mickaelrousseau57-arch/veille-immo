@@ -5,6 +5,7 @@ import { carte, champ, choix, segments, brancherSegments, selecteurHTML, branche
 import { chercher, communeParInsee } from '../data.js';
 import { getCommune, setCommune, annonces } from '../state.js';
 import { parseAnnonce } from '../parse.js';
+import { EQUIPEMENTS, ETATS, champsDe } from '../caracteristiques.js';
 import { lireCollage, PREFIXE } from '../multi.js';
 import { collerTexte, surRetour } from '../presse.js';
 import { marquePageHTML, brancherMarquePage } from './marquepage.js';
@@ -16,7 +17,7 @@ export async function render(root, params = {}) {
   let commune = getCommune();
   if (params.insee) { const c = await communeParInsee(params.insee); if (c) commune = c; }
   let mode = params.mode || 'vente';
-  let valeurs = { type: 'Appartement', prix: '', surface: '', pieces: '', dpe: '', terrain: '', url: '', titre: '', portail: '' };
+  let valeurs = { type: 'Appartement', prix: '', surface: '', pieces: '', dpe: '', terrain: '', url: '', titre: '', portail: '', chambres: '', sdb: '', annee: '', etage: '', etat: '', extras: [] };
   let derniere = null;
 
   let partage = null;
@@ -29,7 +30,7 @@ export async function render(root, params = {}) {
 
   function appliquer(p) {
     if (p.mode) mode = p.mode;
-    valeurs = { ...valeurs, type: p.type || valeurs.type, prix: p.prix ?? valeurs.prix, surface: p.surface ?? valeurs.surface, pieces: p.pieces ?? valeurs.pieces, dpe: p.dpe || valeurs.dpe, terrain: p.terrain ?? valeurs.terrain, url: p.url || valeurs.url, portail: p.portail || valeurs.portail, cp: p.cp || valeurs.cp };
+    valeurs = { ...valeurs, type: p.type || valeurs.type, prix: p.prix ?? valeurs.prix, surface: p.surface ?? valeurs.surface, pieces: p.pieces ?? valeurs.pieces, dpe: p.dpe || valeurs.dpe, terrain: p.terrain ?? valeurs.terrain, url: p.url || valeurs.url, portail: p.portail || valeurs.portail, cp: p.cp || valeurs.cp, chambres: p.chambres ?? valeurs.chambres, sdb: p.sdb ?? valeurs.sdb, annee: p.annee ?? valeurs.annee, etage: p.etage ?? valeurs.etage, etat: p.etat || valeurs.etat, extras: p.extras && p.extras.length ? p.extras : valeurs.extras };
   }
 
   function formulaire() {
@@ -48,6 +49,16 @@ export async function render(root, params = {}) {
         ${choix({ id: 'dpe', label: 'DPE (énergie)', options: [['', 'Inconnu'], ...'ABCDEFG'.split('').map((x) => [x, x])], valeur: valeurs.dpe })}
         ${champ({ id: 'terrain', label: 'Terrain (maison)', type: 'number', valeur: valeurs.terrain, suffixe: 'm²' })}
       </div>
+      <details${valeurs.chambres || valeurs.annee || valeurs.etat || valeurs.extras.length ? ' open' : ''}><summary>Plus de critères (chambres, année, jardin, piscine...)</summary>
+        <div class="grid2">
+          ${champ({ id: 'chambres', label: 'Chambres', type: 'number', valeur: valeurs.chambres })}
+          ${champ({ id: 'sdb', label: 'Salles de bain', type: 'number', valeur: valeurs.sdb })}
+          ${champ({ id: 'annee', label: 'Année de construction', type: 'number', valeur: valeurs.annee })}
+          ${champ({ id: 'etage', label: 'Étage', type: 'number', valeur: valeurs.etage })}
+          ${choix({ id: 'etat', label: 'État', options: [['', 'Inconnu'], ...ETATS], valeur: valeurs.etat })}
+        </div>
+        <div class="chips" id="an-equip">${EQUIPEMENTS.map(([k, n]) => `<button type="button" class="chip${valeurs.extras.includes(k) ? ' on' : ''}" data-v="${k}" aria-pressed="${valeurs.extras.includes(k)}">${esc(n)}</button>`).join('')}</div>
+      </details>
       ${champ({ id: 'titre', label: 'Nom de l\'annonce (facultatif)', valeur: valeurs.titre })}
       ${champ({ id: 'url', label: 'Lien (facultatif)', type: 'url', valeur: valeurs.url })}
       <div class="actions"><button class="btn primary" id="btn-analyser">Analyser</button></div>`);
@@ -64,6 +75,10 @@ export async function render(root, params = {}) {
     });
     brancherSegments(root, 'seg-mode', (v) => { mode = v; relire(); dessiner(); });
     brancherSelecteur(root, 'pick-ann', (c) => { commune = c; setCommune(c); recents.add(c); });
+    root.querySelector('#an-equip').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip');
+      if (c) { c.classList.toggle('on'); c.setAttribute('aria-pressed', String(c.classList.contains('on'))); }
+    });
     root.querySelector('#btn-lire').addEventListener('click', lireAnnonce);
     root.querySelector('#btn-analyser').addEventListener('click', analyser);
     if (derniere) afficher(derniere.res, derniere.a);
@@ -82,7 +97,7 @@ export async function render(root, params = {}) {
   }
 
   function relire() {
-    valeurs = { ...valeurs, type: lire(root, 'type') || valeurs.type, prix: lire(root, 'prix'), surface: lire(root, 'surface'), pieces: lire(root, 'pieces'), dpe: lire(root, 'dpe'), terrain: lire(root, 'terrain'), titre: lire(root, 'titre'), url: lire(root, 'url') };
+    valeurs = { ...valeurs, type: lire(root, 'type') || valeurs.type, prix: lire(root, 'prix'), surface: lire(root, 'surface'), pieces: lire(root, 'pieces'), dpe: lire(root, 'dpe'), terrain: lire(root, 'terrain'), titre: lire(root, 'titre'), url: lire(root, 'url'), chambres: lire(root, 'chambres'), sdb: lire(root, 'sdb'), annee: lire(root, 'annee'), etage: lire(root, 'etage'), etat: lire(root, 'etat'), extras: Array.from(root.querySelectorAll('#an-equip .chip.on')).map((c) => c.dataset.v) };
   }
 
   async function lireAnnonce() {
@@ -120,7 +135,7 @@ export async function render(root, params = {}) {
     const prix = toNumber(valeurs.prix), surface = toNumber(valeurs.surface);
     if (!commune) { toast('Choisissez la commune du bien'); return; }
     if (!(prix > 0) || !(surface > 0)) { toast('Indiquez le prix et la surface'); return; }
-    const a = { mode, type: valeurs.type, prix, surface, pieces: toNumber(valeurs.pieces), dpe: valeurs.dpe || null, terrain: toNumber(valeurs.terrain), insee: commune.insee, cp: commune.cp || null, communeNom: commune.nom, dep: commune.dep, url: /^https?:\/\//.test(valeurs.url) ? valeurs.url : '', titre: valeurs.titre, portail: valeurs.portail };
+    const a = { mode, type: valeurs.type, prix, surface, pieces: toNumber(valeurs.pieces), dpe: valeurs.dpe || null, terrain: toNumber(valeurs.terrain), insee: commune.insee, cp: commune.cp || null, communeNom: commune.nom, dep: commune.dep, url: /^https?:\/\//.test(valeurs.url) ? valeurs.url : '', titre: valeurs.titre, portail: valeurs.portail, chambres: toNumber(valeurs.chambres), sdb: toNumber(valeurs.sdb), annee: toNumber(valeurs.annee), etage: toNumber(valeurs.etage), etat: valeurs.etat || null, extras: valeurs.extras };
     const box = root.querySelector('#res');
     box.innerHTML = '<div class="skeleton" aria-busy="true"><div></div><div></div></div>';
     let res;
@@ -140,7 +155,7 @@ export async function render(root, params = {}) {
       </div>`);
     box.querySelector('#btn-suivre').addEventListener('click', () => {
       const { insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre, portail, communeNom, dep, cp } = a;
-      annonces.add({ insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre: titre || `${type} ${communeNom}`, portail, communeNom, dep, cp });
+      annonces.add({ ...champsDe(a), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url, titre: titre || `${type} ${communeNom}`, portail, communeNom, dep, cp });
       toast('Ajoutée à Ma veille');
     });
   }

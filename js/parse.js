@@ -1,6 +1,8 @@
 /* Lecture d'une annonce copiee depuis un site (texte ou lien) : prix, surface, pieces, DPE, code postal...
    L'extraction est volontairement prudente : un champ non trouve reste null et l'utilisateur le complete. */
 
+import { extraireCaracteristiques } from './caracteristiques.js';
+
 const PORTAILS = [
   ['leboncoin.fr', 'Leboncoin'], ['seloger.com', 'SeLoger'], ['logic-immo.com', 'Logic-Immo'], ['bienici.com', "Bien'ici"],
   ['pap.fr', 'PAP'], ['ouestfrance-immo.com', 'Ouest-France Immo'], ['lefigaro.fr', 'Figaro Immobilier'], ['century21.fr', 'Century 21'],
@@ -56,14 +58,14 @@ function trouverSurface(t) {
 /* opts.mode ('vente' | 'location') impose le mode quand l'utilisateur le connait (import d'une page de resultats). */
 export function parseAnnonce(brut, opts = {}) {
   const t = String(brut || '').replace(/[  ]/g, ' ');
-  const out = { mode: null, type: null, prix: null, surface: null, pieces: null, chambres: null, dpe: null, cp: null, terrain: null, etage: null, url: null, portail: null, extras: [] };
+  const out = { mode: null, type: null, prix: null, surface: null, pieces: null, chambres: null, sdb: null, annee: null, etage: null, etagesTotal: null, etat: null, chauffage: null, ges: null, chargesAn: null, taxeFonciere: null, dpe: null, cp: null, terrain: null, url: null, portail: null, extras: [] };
   if (!t.trim()) return out;
 
   const url = /https?:\/\/[^\s)>"']+/.exec(t);
   if (url) { out.url = url[0]; out.portail = portailDe(url[0]); }
 
-  const louer = /\b(?:à|a)\s+louer\b|\blocation\b|\bloyer\b|charges\s+comprises|\bCC\b|€\s*\/\s*mois|par\s+mois|\/\s*mois|\bbail\b/i.test(t);
-  const vendre = /\b(?:à|a)\s+vendre\b|\bvente\b|\bachat\b|\bhonoraires\b|frais\s+d['’]agence/i.test(t);
+  const louer = /(?<![a-zà-ÿ])(?:à|a)\s+louer\b|\blocation\b|\bloyer\b|charges\s+comprises|\bCC\b|€\s*\/\s*mois|par\s+mois|\/\s*mois|\bbail\b/i.test(t);
+  const vendre = /(?<![a-zà-ÿ])(?:à|a)\s+vendre\b|\bvente\b|\bachat\b|\bhonoraires\b|frais\s+d['’]agence/i.test(t);
   out.mode = louer && !vendre ? 'location' : vendre && !louer ? 'vente' : louer ? 'location' : 'vente';
   if (louer && vendre) {
     // Les deux mots-cles apparaissent : un montant "par mois" tranche en faveur de la location.
@@ -81,8 +83,6 @@ export function parseAnnonce(brut, opts = {}) {
   let m = /(\d{1,2})\s*pi[èe]ces?/i.exec(t) || /\b[TF]\s?(\d)\b/.exec(t);
   if (m) out.pieces = Number(m[1]);
   else if (/\bstudio\b/i.test(t)) out.pieces = 1;
-  m = /(\d{1,2})\s*chambres?/i.exec(t);
-  if (m) out.chambres = Number(m[1]);
 
   m = /(?:DPE|diagnostic de performance [ée]nerg[ée]tique|classe [ée]nergie|classe [ée]nerg[ée]tique|[ée]tiquette [ée]nergie)[^A-Za-z\n]{0,25}\b([A-G])\b/i.exec(t);
   if (m) out.dpe = m[1].toUpperCase();
@@ -95,11 +95,7 @@ export function parseAnnonce(brut, opts = {}) {
 
   m = /terrain[^\d]{0,20}(\d[\d ]{1,6})\s*m\s?[²2]/i.exec(t);
   if (m) out.terrain = intFrom(m[1]);
-  if (/rez[- ]de[- ]chauss[ée]e|\bRDC\b/i.test(t)) out.etage = 0;
-  else if ((m = /(\d{1,2})\s*(?:er|e|ème|eme)?\s*[ée]tage/i.exec(t))) out.etage = Number(m[1]);
-
-  const extras = [['ascenseur', /ascenseur/i], ['balcon', /balcon/i], ['terrasse', /terrasse/i], ['jardin', /jardin/i], ['parking', /parking|garage|box\b/i], ['cave', /\bcave\b/i]];
-  out.extras = extras.filter(([, r]) => r.test(t)).map(([n]) => n);
+  Object.assign(out, extraireCaracteristiques(t, out.mode));
   // Adresse de l'annonce : le nombre de pieces figure souvent dans le chemin ("3-pieces", "t3").
   if (out.url && out.pieces == null) {
     const u = /(?:^|[\/_-])(\d{1,2})[-_]?pi[eè]ces?(?:[\/_.?-]|$)/i.exec(out.url) || /[\/_-]t(\d)(?:[\/_.?-]|$)/i.exec(out.url);

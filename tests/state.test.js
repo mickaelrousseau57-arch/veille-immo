@@ -90,3 +90,16 @@ test('annonces observees : dedoublonnage, plafond et lecture', async () => {
   mem.set('immo.obs', JSON.stringify(all));
   assert.equal(observations.get('57463', 'a').length, 2);
 });
+
+test('import : caracteristiques nettoyees', () => {
+  mem.clear();
+  const json = JSON.stringify({ app: 'immo-veille', annonces: [{ id: 'k1', prix: 200000, surface: 90, chambres: '3', annee: 1975, etat: 'inconnu', chauffage: 'gaz', ges: 'Z', extras: ['jardin', 'piscine', 'helicoptere'] }] });
+  assert.equal(importer(json), 1);
+  const a = annonces.list().find((x) => x.id === 'k1');
+  assert.equal(a.chambres, 3);
+  assert.equal(a.annee, 1975);
+  assert.equal(a.etat, null);
+  assert.equal(a.chauffage, 'gaz');
+  assert.equal(a.ges, null);
+  assert.deepEqual(a.extras, ['jardin', 'piscine']);
+});

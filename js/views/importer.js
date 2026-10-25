@@ -10,6 +10,7 @@ import { marquePageHTML, brancherMarquePage } from './marquepage.js';
 import { collerTexte, surRetour } from '../presse.js';
 import { PREFIXE } from '../multi.js';
 import { evaluer } from '../evaluer.js';
+import { champsDe, resume } from '../caracteristiques.js';
 import { icon } from '../icons.js';
 
 export async function render(root) {
@@ -99,6 +100,7 @@ export async function render(root) {
       <div class="row-main"><b>${esc(g.titre || `${g.type} ${g.communeNom || ''}`)}</b>
         <small>${esc(g.communeNom || 'Commune à préciser')}${g.cp ? ' ' + esc(g.cp) : ''}</small>
         <div class="row-nums"><span><b>${eur(g.prix)}${g.mode === 'location' ? '/mois' : ''}</b></span><span>${g.surface ? num(g.surface) + ' m²' : 'surface ?'}</span>${g.pieces ? `<span>${g.pieces} p.</span>` : ''}${g.surface ? `<span>${g.mode === 'location' ? num(g.prix / g.surface, 1) + ' €/m²' : eurM2(g.prix / g.surface)}</span>` : ''}${g.dpe ? `<span>DPE ${esc(g.dpe)}</span>` : ''}</div>
+        ${resume(g).length ? `<div>${resume(g).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
         <div>${sources}${(g.sources || []).length > 1 ? '<span class="tag">doublon fusionné</span>' : ''}${g.existe ? '<span class="tag">déjà dans Ma veille</span>' : ''}</div>
         ${!g.complete ? `<div class="inp mini"><input type="text" inputmode="decimal" data-act="surf" placeholder="Surface m²" aria-label="Surface en m²"></div>` : ''}
         ${g.typeIncertain ? `<div class="inp mini"><select data-act="type" aria-label="Type de bien"><option value="Appartement">Appartement</option><option value="Maison"${g.type === 'Maison' ? ' selected' : ''}>Maison</option></select></div>` : ''}
@@ -141,7 +143,7 @@ export async function render(root) {
     for (const g of lot.filter((x) => x.choisi)) {
       if (g.existe) { if (annonces.ajouterSources(g.existe.id, g.sources)) fusionnees++; continue; }
       const { mode: md, type, prix, surface, pieces, dpe, terrain, url, titre, portail, communeNom, dep, cp, insee, sources } = g;
-      annonces.add({ insee, mode: md, type, prix, surface, pieces, dpe, terrain, url: url || (sources[0] && sources[0].url) || '', titre: titre || `${type} ${communeNom}`, portail: portail || (sources[0] && sources[0].portail) || '', communeNom, dep, cp, sources });
+      annonces.add({ ...champsDe(g), insee, mode: md, type, prix, surface, pieces, dpe, terrain, url: url || (sources[0] && sources[0].url) || '', titre: titre || `${type} ${communeNom}`, portail: portail || (sources[0] && sources[0].portail) || '', communeNom, dep, cp, sources });
       neuves++;
     }
     toast(`${neuves} ajoutée${neuves > 1 ? 's' : ''}${fusionnees ? `, ${fusionnees} déjà suivie${fusionnees > 1 ? 's' : ''} enrichie${fusionnees > 1 ? 's' : ''}` : ''}`);

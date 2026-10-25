@@ -1,6 +1,7 @@
 /* Import de plusieurs annonces a la fois et fusion des doublons entre sites. Fonctions pures, sans DOM. */
 
 import { parseAnnonce, portailDe } from './parse.js';
+import { champsDe, CHAMPS } from './caracteristiques.js';
 
 export const PREFIXE = 'IMMOVEILLE:';
 const MAX_ITEMS = 300;
@@ -57,7 +58,7 @@ export function lireCollage(texte, mode = 'vente') {
     let o;
     try { o = JSON.parse(t.slice(PREFIXE.length)); } catch { throw new Error('Le contenu collé est incomplet. Recommencez la copie depuis la page de résultats.'); }
     if (!o || !Array.isArray(o.items)) throw new Error('Contenu collé non reconnu.');
-    const items = o.items.slice(0, MAX_ITEMS).filter((x) => x && typeof x.text === 'string').map((x) => ({ url: /^https?:\/\//.test(x.url) ? String(x.url).slice(0, 600) : '', text: x.text.slice(0, 2500) }));
+    const items = o.items.slice(0, MAX_ITEMS).filter((x) => x && typeof x.text === 'string').map((x) => ({ url: /^https?:\/\//.test(x.url) ? String(x.url).slice(0, 600) : '', text: x.text.slice(0, 8000) }));
     return { items, page: typeof o.page === 'string' && /^https?:\/\//.test(o.page) ? o.page.slice(0, 600) : '', via: 'marque-page' };
   }
   const premiere = /^https?:\/\/\S+$/.exec(t.split(/\r?\n/)[0] || '');
@@ -73,7 +74,7 @@ export function lireAnnonces(items, { mode = 'vente', page = '' } = {}) {
     const url = p.url || page || '';
     const titre = it.text.split('\n').map((l) => l.trim()).find((l) => l.length > 8 && !PRIX_LIGNE.test(l) && !/^https?:/.test(l)) || '';
     const portail = portailDe(url) || portailDe(page);
-    out.push({ mode, type: p.type || 'Appartement', typeIncertain: !p.type, prix: p.prix, surface: p.surface, pieces: p.pieces, dpe: p.dpe, terrain: p.terrain, cp: p.cp, url: it.url || (p.url || ''), titre: titre.slice(0, 120), portail: portail || '', complete: !!(p.prix && p.surface) });
+    out.push({ mode, type: p.type || 'Appartement', typeIncertain: !p.type, prix: p.prix, surface: p.surface, pieces: p.pieces, dpe: p.dpe, terrain: p.terrain, ...champsDe(p), cp: p.cp, url: it.url || (p.url || ''), titre: titre.slice(0, 120), portail: portail || '', complete: !!(p.prix && p.surface) });
   }
   return out;
 }
@@ -107,6 +108,9 @@ export function regrouper(liste) {
     g.dpe = g.dpe || a.dpe;
     g.cp = g.cp || a.cp;
     g.terrain = g.terrain || a.terrain;
+    // Les caracteristiques manquantes sur un site sont completees par l'autre ; les equipements s'additionnent.
+    for (const k of CHAMPS) if (k !== 'extras' && g[k] == null) g[k] = a[k] ?? null;
+    g.extras = [...new Set([...(g.extras || []), ...(a.extras || [])])];
   }
   return groupes;
 }

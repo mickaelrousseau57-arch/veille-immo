@@ -1,6 +1,7 @@
 /* Etat partage : commune consultee, reglages, ma veille. Tout est stocke sur l'appareil (localStorage). */
 
 import { store, uid, todayISO, toNumber } from './util.js';
+import { EQUIPEMENTS, ETATS, CHAUFFAGES } from './caracteristiques.js';
 
 /* ---------- Commune courante ---------- */
 let current = store.get('commune');
@@ -140,7 +141,10 @@ export function importer(texte) {
     titre: txt(a.titre, 200), url: /^https?:\/\//.test(a.url || '') ? txt(a.url, 600) : '', portail: txt(a.portail, 60),
     insee: txt(a.insee, 6), communeNom: txt(a.communeNom, 100), dep: txt(a.dep, 3), cp: txt(a.cp, 5),
     type: a.type === 'Maison' ? 'Maison' : 'Appartement', prix: nb(a.prix), surface: nb(a.surface), pieces: nb(a.pieces), dpe: /^[A-G]$/.test(a.dpe) ? a.dpe : null,
-    terrain: nb(a.terrain), statut: STATUTS.some((s) => s.id === a.statut) ? a.statut : 'avoir', note: txt(a.note, 2000),
+    terrain: nb(a.terrain), chambres: nb(a.chambres), sdb: nb(a.sdb), annee: nb(a.annee), etage: nb(a.etage), etagesTotal: nb(a.etagesTotal), chargesAn: nb(a.chargesAn), taxeFonciere: nb(a.taxeFonciere),
+    etat: ETATS.some(([k]) => k === a.etat) ? a.etat : null, chauffage: CHAUFFAGES.some(([k]) => k === a.chauffage) ? a.chauffage : null, ges: /^[A-G]$/.test(a.ges) ? a.ges : null,
+    extras: Array.isArray(a.extras) ? a.extras.filter((k) => EQUIPEMENTS.some(([e]) => e === k)).slice(0, 20) : [],
+    statut: STATUTS.some((s) => s.id === a.statut) ? a.statut : 'avoir', note: txt(a.note, 2000),
     historique: Array.isArray(a.historique) ? a.historique.slice(0, 100).map((h) => ({ date: txt(h.date, 10), prix: nb(h.prix) })) : [],
     sources: Array.isArray(a.sources) ? a.sources.slice(0, 12).map((x) => ({ portail: txt(x && x.portail, 60), url: /^https?:\/\//.test((x && x.url) || '') ? txt(x.url, 600) : '' })) : [],
   });
@@ -161,6 +165,7 @@ export function importer(texte) {
 
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 export function versCSV(lignes) {
-  const cols = ['Titre', 'Commune', 'Code postal', 'Type', 'Prix', 'Surface m2', 'Pieces', 'Prix m2', 'Ecart marche %', 'Score', 'DPE', 'Statut', 'Variation prix %', 'Lien', 'Note'];
+  const cols = ['Titre', 'Commune', 'Code postal', 'Type', 'Prix', 'Surface m2', 'Pieces', 'Prix m2', 'Ecart marche %', 'Score', 'DPE', 'Statut', 'Variation prix %', 'Lien', 'Note',
+    'Chambres', 'Salles de bain', 'Annee construction', 'Etage', 'Terrain m2', 'Etat', 'Chauffage', 'Equipements', 'Charges copro par an', 'Achat ou location', 'Prix par rapport au marche'];
   return '﻿' + [cols, ...lignes].map((r) => r.map(csvCell).join(';')).join('\r\n');
 }

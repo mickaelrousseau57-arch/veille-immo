@@ -49,8 +49,14 @@ export function extraireAnnonces(doc) {
   if (g(/"floorSize"[^}]*?"value"\s*:\s*"?(\d+(?:[.,]\d+)?)/)) lignes.push(g(/"floorSize"[^}]*?"value"\s*:\s*"?(\d+(?:[.,]\d+)?)/) + ' m²');
   if (g(/"numberOfRooms"\s*:\s*"?(\d+)/)) lignes.push(g(/"numberOfRooms"\s*:\s*"?(\d+)/) + ' pièces');
   if (g(/"postalCode"\s*:\s*"?(\d{5})/)) lignes.push(g(/"postalCode"\s*:\s*"?(\d{5})/));
-  lignes.push(((doc.body && doc.body.innerText) || '').replace(/[ \t\u00a0\u202f]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 1500));
-  const texte = lignes.filter(Boolean).join('\n').slice(0, 2500);
+  if (g(/"numberOfBedrooms"\s*:\s*"?(\d+)/)) lignes.push(g(/"numberOfBedrooms"\s*:\s*"?(\d+)/) + ' chambres');
+  if (g(/"yearBuilt"\s*:\s*"?(\d{4})/)) lignes.push('construit en ' + g(/"yearBuilt"\s*:\s*"?(\d{4})/));
+  // Texte principal de la page (les caracteristiques sont souvent en bas), coupe avant les annonces similaires.
+  let corps = ((doc.querySelector('main') || doc.body || {}).innerText || '').replace(/[ \t\u00a0\u202f]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+  const coupe = corps.slice(300).search(/annonces?\s+similaires|biens?\s+similaires|vous\s+aimerez\s+aussi|autres\s+annonces|ces\s+annonces\s+peuvent/i);
+  if (coupe >= 0) corps = corps.slice(0, 300 + coupe);
+  lignes.push(corps.slice(0, 6000));
+  const texte = lignes.filter(Boolean).join('\n').slice(0, 8000);
   return /€/.test(texte) || SURF.test(texte) ? [{ url: doc.location.href, text: texte }] : [];
 }
 
