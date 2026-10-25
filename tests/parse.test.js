@@ -76,3 +76,22 @@ test('surface : un mot-cle sur la ligne precedente ne l\'exclut pas', () => {
   const b = parseAnnonce('Appartement 60 m² avec balcon de 8 m²\n150 000 €');
   assert.equal(b.surface, 60);
 });
+
+test('lien seul (partage depuis un site) : mode, code postal et portail lus dans l\'adresse', () => {
+  const a = parseAnnonce('https://www.seloger.com/annonce/achat/grand-est/moselle-57/cattenom-57570/26MIPYCFIPGU?utm=x');
+  assert.equal(a.mode, 'vente');
+  assert.equal(a.cp, '57570');
+  assert.equal(a.portail, 'SeLoger');
+  assert.equal(a.prix, null);
+  assert.equal(a.surface, null);
+});
+
+test('lien : type et nombre de pieces lus dans le chemin', () => {
+  const a = parseAnnonce('https://www.bienici.com/annonce/vente/metz/appartement/3pieces/abc123');
+  assert.equal(a.type, 'Appartement');
+  assert.equal(a.pieces, 3);
+  const b = parseAnnonce('https://exemple.fr/annonce/location-maison-t5-nancy-54000-r1');
+  assert.equal(b.mode, 'location');
+  assert.equal(b.type, 'Maison');
+  assert.equal(b.pieces, 5);
+});

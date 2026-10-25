@@ -102,7 +102,7 @@ export async function render(root) {
     let m = null;
     try { m = await meta(); } catch { /* meta indisponible */ }
     return `<ul class="facts">
-      <li><b>Prix de vente</b> : ventes réelles enregistrées par les notaires (Demandes de valeurs foncières, DGFiP / Etalab)${m ? `, ${m.dvfYears[0]} à ${m.dvfYears[m.dvfYears.length - 1]}, jusqu'au ${esc(frDate(m.dvfRef))}` : ''}. Alsace-Moselle (57, 67, 68) et Mayotte : non publiées.</li>
+      <li><b>Prix de vente</b> : ventes réelles enregistrées par les notaires (Demandes de valeurs foncières, DGFiP / Etalab)${m ? `, ${m.dvfYears[0]} à ${m.dvfYears[m.dvfYears.length - 1]}, jusqu'au ${esc(frDate(m.dvfRef))}` : ''}. Alsace-Moselle (57, 67, 68) et Mayotte : non publiées ; l'application s'appuie alors sur les prix médians des notaires (ventes 2024, citation avec mention Notaires de France), puis sur les annonces que vous importez.</li>
       <li><b>Loyers</b> : Carte des loyers ${m ? esc(m.loyersYear) : ''}, loyers d'annonce estimés par commune (Ministère de la Transition écologique).</li>
       <li><b>Communes, codes postaux, population</b> : geo.api.gouv.fr (Etalab).</li>
       <li><b>Taux de crédit</b> : Observatoire Crédit Logement / CSA, repris à la main.</li>

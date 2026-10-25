@@ -100,5 +100,10 @@ export function parseAnnonce(brut, opts = {}) {
 
   const extras = [['ascenseur', /ascenseur/i], ['balcon', /balcon/i], ['terrasse', /terrasse/i], ['jardin', /jardin/i], ['parking', /parking|garage|box\b/i], ['cave', /\bcave\b/i]];
   out.extras = extras.filter(([, r]) => r.test(t)).map(([n]) => n);
+  // Adresse de l'annonce : le nombre de pieces figure souvent dans le chemin ("3-pieces", "t3").
+  if (out.url && out.pieces == null) {
+    const u = /(?:^|[\/_-])(\d{1,2})[-_]?pi[eè]ces?(?:[\/_.?-]|$)/i.exec(out.url) || /[\/_-]t(\d)(?:[\/_.?-]|$)/i.exec(out.url);
+    if (u) out.pieces = Number(u[1]);
+  }
   return out;
 }

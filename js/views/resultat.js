@@ -26,7 +26,7 @@ export function resultatAchat(r, a) {
     <div class="distrib">${distribution(r.stats.q, r.ppm2)}<p class="note">Fourchette des ventes : 80 % entre ${eurM2(r.stats.q[0])} et ${eurM2(r.stats.q[4])}, moitié entre ${eurM2(r.stats.q[1])} et ${eurM2(r.stats.q[3])}.</p></div>
     ${r.tendance && (r.tendance.an1 != null) ? `<p class="line">Évolution des prix dans le secteur : <b>${signedPct(r.tendance.an1)}</b> sur 1 an${r.tendance.an3 != null ? `, <b>${signedPct(r.tendance.an3)}</b> sur 3 ans` : ''}.</p>` : ''}
     ${alertes(r.alertes)}
-    <p class="note">${r.marche.source === 'manuel' ? `Base : prix de référence saisi par vous pour ${esc(r.commune.nom)}, fourchette estimée à ± 15 %.` : `Base : ${num(r.stats.n)} ventes réelles (${esc(r.stats.fenetre)}) à ${esc(r.commune.nom)}${r.perimetre !== 'commune' ? ' (code postal ' + esc(r.perimetre) + ')' : ''} · fiabilité ${esc(r.stats.fiabilite)}.`}</p>
+    <p class="note">${noteSource(r, a)}</p>
     ${r.comparables && r.comparables.length ? comparablesHTML(r.comparables) : ''}`;
 }
 
@@ -43,6 +43,15 @@ export function resultatLocation(r, a) {
       <div class="kpi"><p class="kpi-l">Loyer attendu pour ${num(a.surface)} m²</p><p class="kpi-v">${eur(r.loyerAttendu)}</p><p class="kpi-s">fourchette ${eur(Math.round(r.ref[1] * a.surface))} à ${eur(Math.round(r.ref[2] * a.surface))}</p></div>
     </div>
     <p class="note">Loyers d'annonce charges comprises, estimés par commune (Carte des loyers 2025, Ministère de la Transition écologique). Dans les villes à encadrement des loyers, le plafond légal peut être inférieur.</p>`;
+}
+
+function noteSource(r, a) {
+  const src = r.marche.sources && r.marche.sources[a.type === 'Maison' ? 'h' : 'a'];
+  const nom = esc(r.commune.nom);
+  if (src === 'manuel') return `Base : prix de référence saisi par vous pour ${nom}, fourchette estimée à ± 15 %.`;
+  if (src === 'notaires') return `Base : prix médian des ventes 2024 publié par les notaires pour ${nom}, fourchette estimée à ± 15 % (pas de données de vente détaillées dans ce département).`;
+  if (src === 'annonces') return `Base : ${num(r.stats.n)} annonces observées dans vos imports à ${nom}. Ce sont des prix demandés, en général au-dessus des prix de vente : le verdict est comparatif, pas absolu.`;
+  return `Base : ${num(r.stats.n)} ventes réelles (${esc(r.stats.fenetre)}) à ${nom}${r.perimetre !== 'commune' ? ' (code postal ' + esc(r.perimetre) + ')' : ''} · fiabilité ${esc(r.stats.fiabilite)}.`;
 }
 
 export const alertes = (l) => (l && l.length ? `<ul class="alerts">${l.map((x) => `<li class="${x.tone}">${esc(x.texte)}</li>`).join('')}</ul>` : '');

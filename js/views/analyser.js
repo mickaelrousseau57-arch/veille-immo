@@ -5,6 +5,9 @@ import { carte, champ, choix, segments, brancherSegments, selecteurHTML, branche
 import { chercher, communeParInsee } from '../data.js';
 import { getCommune, setCommune, annonces } from '../state.js';
 import { parseAnnonce } from '../parse.js';
+import { lireCollage, PREFIXE } from '../multi.js';
+import { collerTexte, surRetour } from '../presse.js';
+import { marquePageHTML, brancherMarquePage } from './marquepage.js';
 import { evaluer } from '../evaluer.js';
 import { resultatAchat, resultatLocation } from './resultat.js';
 import { icon } from '../icons.js';
@@ -16,10 +19,12 @@ export async function render(root, params = {}) {
   let valeurs = { type: 'Appartement', prix: '', surface: '', pieces: '', dpe: '', terrain: '', url: '', titre: '', portail: '' };
   let derniere = null;
 
+  let partage = null;
   if (params.text || params.url) {
     // Ouverture depuis le partage d'une annonce (menu Partager du telephone).
-    const p = parseAnnonce(`${params.text || ''} ${params.url || ''}`);
+    const p = parseAnnonce(`${params.text || ''}\n${params.url || ''}`);
     appliquer(p);
+    partage = { p, texte: params.text || '', url: params.url || '' };
   }
 
   function appliquer(p) {
@@ -31,7 +36,7 @@ export async function render(root, params = {}) {
     return carte('Analyser une annonce', `
       <p class="lead">Copiez le texte de l'annonce (ou son lien) sur le site, collez-le ici : l'application lit le prix, la surface et le reste. Vous pouvez corriger chaque champ.</p>
       <div class="field"><label for="colle">Texte ou lien de l'annonce</label><div class="inp"><textarea id="colle" rows="4" placeholder="Collez ici le texte de l'annonce..."></textarea></div></div>
-      <div class="actions"><button class="btn" id="btn-lire">${icon('scan')}Lire l'annonce</button></div>
+      <div class="actions"><button class="btn" id="btn-coller-un">${icon('copy')}Coller</button><button class="btn" id="btn-lire">${icon('scan')}Lire l'annonce</button></div>
       <hr>
       ${segments('seg-mode', [['vente', 'Vente'], ['location', 'Location']], mode)}
       ${selecteurHTML('pick-ann', commune ? commune.nom : '')}
@@ -49,7 +54,14 @@ export async function render(root, params = {}) {
   }
 
   function dessiner() {
-    root.innerHTML = basculeAnalyse('une') + formulaire() + '<div id="res"></div>';
+    root.innerHTML = basculeAnalyse('une') + bilanPartage() + formulaire() + '<div id="res"></div>' + carte('Remplir automatiquement', marquePageHTML({ ouvert: !!(partage && !(partage.p.prix && partage.p.surface)) }));
+    brancherMarquePage(root);
+    root.querySelector('#btn-coller-un').addEventListener('click', async () => {
+      const t = await collerTexte();
+      if (t == null) { toast('Collez à la main dans la zone de texte'); return; }
+      root.querySelector('#colle').value = t;
+      if (t) lireAnnonce();
+    });
     brancherSegments(root, 'seg-mode', (v) => { mode = v; relire(); dessiner(); });
     brancherSelecteur(root, 'pick-ann', (c) => { commune = c; setCommune(c); recents.add(c); });
     root.querySelector('#btn-lire').addEventListener('click', lireAnnonce);
@@ -57,12 +69,37 @@ export async function render(root, params = {}) {
     if (derniere) afficher(derniere.res, derniere.a);
   }
 
+  /* Ce que le telephone a transmis lors d'un partage, et pourquoi le reste manque. */
+  function bilanPartage() {
+    if (!partage) return '';
+    const p = partage.p;
+    const lus = [p.type && p.type.toLowerCase(), p.pieces && `${p.pieces} pièce(s)`, p.cp && `code postal ${p.cp}`, p.prix && `prix ${p.prix} €`, p.surface && `${p.surface} m²`].filter(Boolean);
+    const complet = p.prix && p.surface;
+    return carte('Annonce reçue par le partage', `
+      <p class="muted" style="margin:0">Lien : ${esc(partage.url || 'aucun')}<br>Texte transmis : ${esc(partage.texte.replace(/\s+/g, ' ').trim().slice(0, 160) || 'aucun')}</p>
+      <p class="line">Lu automatiquement : ${esc(lus.join(', ') || 'rien')}.</p>
+      ${complet ? '' : `<div class="notice warn"><p>Le prix et la surface ne figurent pas dans ce qui a été transmis : seul le lien (et parfois le titre) est partagé. L'application ne peut pas ouvrir la page de l'annonce à votre place : le site l'interdit et le navigateur le bloque. Pour remplir le reste automatiquement, utilisez le marque-page ci-dessous. Sinon, copiez le texte de l'annonce et touchez « Coller ».</p></div>`}`);
+  }
+
   function relire() {
     valeurs = { ...valeurs, type: lire(root, 'type') || valeurs.type, prix: lire(root, 'prix'), surface: lire(root, 'surface'), pieces: lire(root, 'pieces'), dpe: lire(root, 'dpe'), terrain: lire(root, 'terrain'), titre: lire(root, 'titre'), url: lire(root, 'url') };
   }
 
   async function lireAnnonce() {
-    const p = parseAnnonce(lire(root, 'colle'));
+    let brut = lire(root, 'colle').trim();
+    if (brut.startsWith(PREFIXE)) {
+      let r;
+      try { r = lireCollage(brut, mode); } catch (e) { toast(e.message); return; }
+      if (r.items.length > 1) {
+        // Une page de resultats : l'ecran "Plusieurs annonces" les traite toutes.
+        sessionStorage.setItem('immo-import', brut);
+        location.hash = '#importer';
+        return;
+      }
+      if (!r.items.length) { toast('Aucune annonce dans le contenu collé'); return; }
+      brut = `${r.items[0].text}\n${r.items[0].url || ''}`;
+    }
+    const p = parseAnnonce(brut);
     if (!p.prix && !p.surface && !p.cp) { toast('Rien de reconnu : saisissez les champs à la main'); return; }
     relire();
     appliquer(p);
@@ -74,7 +111,8 @@ export async function render(root, params = {}) {
     }
     derniere = null;
     dessiner();
-    toast(p.prix ? 'Annonce lue : vérifiez les champs' : 'Lecture partielle : complétez les champs');
+    if (p.prix && p.surface && commune) { toast('Annonce lue et analysée : vérifiez les champs'); analyser(); }
+    else toast(p.prix ? 'Annonce lue : complétez les champs manquants' : 'Lecture partielle : complétez les champs');
   }
 
   async function analyser() {
@@ -107,5 +145,15 @@ export async function render(root, params = {}) {
     });
   }
 
+  if (partage && partage.p.cp) {
+    try {
+      const r = await chercher(partage.p.cp, 1);
+      if (r[0]) { commune = { ...r[0], cp: partage.p.cp }; setCommune(commune); recents.add(commune); }
+    } catch { /* l'utilisateur choisira la commune */ }
+  }
   dessiner();
+  surRetour(root, (t) => {
+    const ta = root.querySelector('#colle');
+    if (ta) { ta.value = t; lireAnnonce(); }
+  });
 }

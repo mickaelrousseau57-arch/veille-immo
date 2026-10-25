@@ -80,6 +80,7 @@ export async function render(root, params = {}) {
     const bloc = f[type === 'Maison' ? 'h' : 'a'];
     const stats = choisirStats(bloc);
     const t = tendance(bloc);
+    const src = m.sources && m.sources[type === 'Maison' ? 'h' : 'a'];
     const l = f.l;
     const loyer = loyerRef(l, type, null);
     const rendement = stats && loyer ? ((loyer[0] * 12) / stats.mediane) * 100 : null;
@@ -95,16 +96,16 @@ export async function render(root, params = {}) {
     if (f.a || f.h) {
       h += carte('Prix de vente', `${segments('seg-type', [['Appartement', 'Appartements'], ['Maison', 'Maisons']], type)}
         ${stats ? `<div class="kpis">
-          ${kpi('Prix médian', eurM2(stats.mediane), m.source === 'manuel' ? 'référence saisie par vous' : `${num(stats.n)} ventes · ${esc(stats.fenetre)}`)}
-          ${kpi('Fourchette courante', `${num(stats.q[1])} – ${num(stats.q[3])}`, m.source === 'manuel' ? '€/m², estimée à ± 15 %' : '€/m², la moitié des ventes')}
+          ${kpi('Prix médian', eurM2(stats.mediane), src === 'manuel' ? 'référence saisie par vous' : src === 'notaires' ? 'notaires, ventes 2024' : src === 'annonces' ? `${num(stats.n)} annonces (prix demandés)` : `${num(stats.n)} ventes · ${esc(stats.fenetre)}`)}
+          ${kpi('Fourchette courante', `${num(stats.q[1])} – ${num(stats.q[3])}`, src === 'manuel' || src === 'notaires' ? '€/m², estimée à ± 15 %' : '€/m², la moitié des ventes')}
           ${bloc.s ? kpi(`${type === 'Maison' ? 'Maison' : 'Appartement'} type`, `${num(bloc.s)} m²`, `≈ ${eur(Math.round(bloc.s * stats.mediane))}`) : ''}
           ${t && t.an1 != null ? kpi('Évolution sur 1 an', signedPct(t.an1), t.an3 != null ? `${signedPct(t.an3)} sur 3 ans` : `médiane ${t.derniere}`) : ''}
         </div>
-        ${m.source !== 'manuel' && (stats.fiabilite === 'faible' || stats.fiabilite === 'moyenne') ? `<p class="note">Peu de ventes (${num(stats.n)}) : à prendre comme un ordre de grandeur.</p>` : ''}`
+        ${src === 'dvf' && (stats.fiabilite === 'faible' || stats.fiabilite === 'moyenne') ? `<p class="note">Peu de ventes (${num(stats.n)}) : à prendre comme un ordre de grandeur.</p>` : ''}`
           : `<div class="notice"><p>Pas assez de ventes de ${type === 'Maison' ? 'maisons' : 'appartements'} pour calculer un prix fiable ici.</p></div>`}
         ${t ? `<h3 class="sec">Prix médian par année</h3>${courbes([{ nom: type === 'Maison' ? 'Maisons' : 'Appartements', classe: 'c1', points: t.serie.map((p) => ({ x: String(p.annee), y: p.mediane })) }])}` : ''}
         ${type === 'Appartement' && bloc && bloc.r ? `<h3 class="sec">Selon le nombre de pièces</h3><table class="tbl"><thead><tr><th>Pièces</th><th>Prix médian</th><th>Ventes</th></tr></thead><tbody>${Object.entries(bloc.r).map(([k, v]) => `<tr><td>${k === '5' ? '5 et plus' : k}</td><td>${eurM2(v[0])}</td><td>${num(v[1])}</td></tr>`).join('')}</tbody></table>` : ''}
-        <p class="note">${m.source === 'manuel' ? 'Valeur de référence saisie par vous.' : `Ventes réelles enregistrées (DVF) jusqu'au ${esc(frDate(m.meta.dvfRef))}. Logements vendus seuls, hors ventes atypiques.`}</p>`);
+        <p class="note">${src === 'manuel' ? 'Valeur de référence saisie par vous.' : src === 'notaires' ? 'Prix médian d\'actes de vente publié par les notaires (voir le détail ci-dessus).' : src === 'annonces' ? 'Prix demandés relevés dans les annonces que vous avez importées : en général supérieurs aux prix de vente.' : `Ventes réelles enregistrées (DVF) jusqu'au ${esc(frDate(m.meta.dvfRef))}. Logements vendus seuls, hors ventes atypiques.`}</p>`);
     }
 
     if (l && (l.a || l.h)) {
@@ -130,9 +131,29 @@ export async function render(root, params = {}) {
 
   function refManuelle(m) {
     const ref = store.get('refs', {})[m.commune.insee] || {};
-    return carte('Prix de vente', `<div class="notice"><p>Les ventes ne sont pas publiées pour ce département (Alsace-Moselle et Mayotte ne figurent pas dans les données DVF). Les loyers restent disponibles ci-dessous.</p><p>Pour évaluer une annonce, saisissez un prix de référence au m² que vous aurez relevé (annonces similaires, site des notaires, estimation de votre agent). La fourchette est estimée à ± 15 % autour de cette valeur.</p></div>
-      <div class="grid2">${champ({ id: 'ref-a', label: 'Appartement', type: 'number', valeur: ref.a || '', suffixe: '€/m²' })}${champ({ id: 'ref-h', label: 'Maison', type: 'number', valeur: ref.h || '', suffixe: '€/m²' })}</div>
-      <div class="actions"><button class="btn" id="btn-ref">Enregistrer</button></div>`);
+    const n = m.notaires;
+    const c = n && n.commune;
+    const obs = m.nbObservations || { a: 0, h: 0 };
+    const eu = (v) => `${num(v)} €`;
+    const evo = (v) => (v == null ? '' : ` (${v > 0 ? '+' : ''}${num(v, 1)} %)`);
+    const lignes = [];
+    if (c && c.a) lignes.push(`Appartements anciens : <b>${num(c.a)} €/m²</b>${evo(c.aEvo)}`);
+    if (c && c.h) lignes.push(`Maisons anciennes : prix médian <b>${eu(c.h)}</b>${evo(c.hEvo)}`);
+    return carte('Prix de vente', `
+      <div class="notice"><p>Les ventes réelles ne sont pas publiées pour ce département (Alsace-Moselle et Mayotte ne figurent pas dans les données DVF : les actes sont au Livre foncier, non ouvert). L'application utilise à la place, dans cet ordre : votre prix de référence, les prix médians des notaires, puis les annonces que vous importez.</p></div>
+      ${n ? `<h3 class="sec">Repères des notaires (ventes 2024)</h3>
+        ${lignes.length ? `<p class="line" style="margin-top:0">${esc(m.commune.nom)} : ${lignes.join(' · ')}</p>` : `<p class="muted">${esc(m.commune.nom)} n'est pas détaillée dans cette publication.</p>`}
+        ${n.dep ? `<p class="muted">Département : appartements ${num(n.dep.a)} €/m²${evo(n.dep.aEvo)}, maisons ${eu(n.dep.h)}${evo(n.dep.hEvo)}.</p>` : ''}
+        ${c && c.quartiers ? `<details><summary>Appartements par quartier</summary><table class="tbl"><thead><tr><th>Quartier</th><th>Prix médian</th><th>1 an</th></tr></thead><tbody>${c.quartiers.map((q) => `<tr><td>${esc(q.nom)}</td><td>${eurM2(q.a)}</td><td>${signedPct(q.evo)}</td></tr>`).join('')}</tbody></table></details>` : ''}
+        ${n.secteurs.length ? `<details><summary>Par secteur du département</summary><table class="tbl"><thead><tr><th>Secteur</th><th>Appart.</th><th>Maison</th></tr></thead><tbody>${n.secteurs.map((q) => `<tr><td>${esc(q.nom)}</td><td>${q.a ? eurM2(q.a) : '--'}</td><td>${q.h ? eu(q.h) : '--'}</td></tr>`).join('')}</tbody></table></details>` : ''}
+        <p class="note">Source : <a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.source)}</a>, ${esc(n.periode)}. ${esc(n.note)}</p>` : ''}
+      <h3 class="sec">Annonces observées</h3>
+      <p class="muted" style="margin:0">${num(obs.a)} appartement(s) et ${num(obs.h)} maison(s) relevés dans vos imports pour cette commune. Dès 8 annonces d'un même type, l'application affiche leur médiane (prix demandés, pas des ventes).</p>
+      <div class="actions"><a class="btn" href="#importer">${icon('scan')}Importer des annonces</a></div>
+      <details><summary>Saisir mon propre prix de référence</summary>
+        <div class="grid2">${champ({ id: 'ref-a', label: 'Appartement', type: 'number', valeur: ref.a || '', suffixe: '€/m²' })}${champ({ id: 'ref-h', label: 'Maison', type: 'number', valeur: ref.h || '', suffixe: '€/m²' })}</div>
+        <p class="note">Il remplace les autres sources. Fourchette estimée à ± 15 %.</p>
+        <div class="actions"><button class="btn" id="btn-ref">Enregistrer</button></div></details>`);
   }
 
   async function brancher(corps, m) {

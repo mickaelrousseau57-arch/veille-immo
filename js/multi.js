@@ -57,7 +57,7 @@ export function lireCollage(texte, mode = 'vente') {
     let o;
     try { o = JSON.parse(t.slice(PREFIXE.length)); } catch { throw new Error('Le contenu collé est incomplet. Recommencez la copie depuis la page de résultats.'); }
     if (!o || !Array.isArray(o.items)) throw new Error('Contenu collé non reconnu.');
-    const items = o.items.slice(0, MAX_ITEMS).filter((x) => x && typeof x.text === 'string').map((x) => ({ url: /^https?:\/\//.test(x.url) ? String(x.url).slice(0, 600) : '', text: x.text.slice(0, 900) }));
+    const items = o.items.slice(0, MAX_ITEMS).filter((x) => x && typeof x.text === 'string').map((x) => ({ url: /^https?:\/\//.test(x.url) ? String(x.url).slice(0, 600) : '', text: x.text.slice(0, 2500) }));
     return { items, page: typeof o.page === 'string' && /^https?:\/\//.test(o.page) ? o.page.slice(0, 600) : '', via: 'marque-page' };
   }
   const premiere = /^https?:\/\/\S+$/.exec(t.split(/\r?\n/)[0] || '');

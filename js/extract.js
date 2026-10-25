@@ -34,7 +34,24 @@ export function extraireAnnonces(doc) {
     vus.add(v.url);
     out.push(v);
   });
-  return out.slice(0, 300);
+  if (out.length >= 2) return out.slice(0, 300);
+  // Une seule annonce (ou page de detail) : titre, description, donnees structurees de la page et debut du texte.
+  const meta = (n) => {
+    const e = doc.querySelector('meta[property="' + n + '"],meta[name="' + n + '"]');
+    return e && e.content ? e.content : '';
+  };
+  let ld = '';
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach((s) => { ld += ' ' + s.textContent; });
+  const g = (re) => { const m = re.exec(ld); return m ? m[1] : ''; };
+  const prixLd = Math.round(Number(g(/"price"\s*:\s*"?(\d[\d.]*)/)));
+  const lignes = [meta('og:title') || doc.title, meta('og:description') || meta('description')];
+  if (prixLd >= 100) lignes.push(prixLd + ' €');
+  if (g(/"floorSize"[^}]*?"value"\s*:\s*"?(\d+(?:[.,]\d+)?)/)) lignes.push(g(/"floorSize"[^}]*?"value"\s*:\s*"?(\d+(?:[.,]\d+)?)/) + ' m²');
+  if (g(/"numberOfRooms"\s*:\s*"?(\d+)/)) lignes.push(g(/"numberOfRooms"\s*:\s*"?(\d+)/) + ' pièces');
+  if (g(/"postalCode"\s*:\s*"?(\d{5})/)) lignes.push(g(/"postalCode"\s*:\s*"?(\d{5})/));
+  lignes.push(((doc.body && doc.body.innerText) || '').replace(/[ \t\u00a0\u202f]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, 1500));
+  const texte = lignes.filter(Boolean).join('\n').slice(0, 2500);
+  return /€/.test(texte) || SURF.test(texte) ? [{ url: doc.location.href, text: texte }] : [];
 }
 
 /* Code du marque-page : a glisser dans la barre de favoris, ou a coller comme adresse d'un favori. */
@@ -42,7 +59,7 @@ export function codeMarquePage() {
   const code = `(async()=>{var r=(${extraireAnnonces.toString()})(document);`
     + `var j='IMMOVEILLE:'+JSON.stringify({v:1,page:location.href,items:r});`
     + `if(!r.length){alert('Aucune annonce reconnue sur cette page. Faites defiler la page pour afficher les annonces, puis recommencez.');return}`
-    + `try{await navigator.clipboard.writeText(j);alert(r.length+' annonces copiees. Ouvrez Veille immo, ecran Plusieurs annonces, puis collez.')}`
+    + `try{await navigator.clipboard.writeText(j);alert(r.length+(r.length>1?' annonces copiees':' annonce copiee')+'. Ouvrez Veille immo : elle se remplit toute seule (sinon collez le contenu).')}`
     + `catch(e){prompt('Copiez ce texte (Ctrl+C), puis collez-le dans Veille immo :',j)}})()`;
   return 'javascript:' + encodeURIComponent(code);
 }

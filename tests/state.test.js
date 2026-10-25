@@ -74,3 +74,19 @@ test('CSV : guillemets echappes et BOM', () => {
   assert.ok(csv.startsWith('﻿"Titre"'));
   assert.ok(csv.includes('"Titre ""x"""'));
 });
+
+test('annonces observees : dedoublonnage, plafond et lecture', async () => {
+  mem.clear();
+  const { observations } = await import('../js/state.js');
+  observations.add('57463', 'a', [{ p: 2000, k: 'u1' }, { p: 2100, k: 'u2' }, { p: 2000, k: 'u1' }, { p: 0, k: 'u3' }]);
+  assert.equal(observations.get('57463', 'a').length, 2);
+  observations.add('57463', 'a', [{ p: 2200, k: 'u4' }]);
+  assert.equal(observations.get('57463', 'a').length, 3);
+  assert.equal(observations.get('57463', 'h').length, 0);
+  assert.equal(observations.get('54395', 'a').length, 0);
+  // une observation trop ancienne est ignoree
+  const all = JSON.parse(mem.get('immo.obs'));
+  all['57463'].a[0].t = Date.now() - 200 * 86400000;
+  mem.set('immo.obs', JSON.stringify(all));
+  assert.equal(observations.get('57463', 'a').length, 2);
+});

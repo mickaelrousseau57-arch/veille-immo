@@ -27,7 +27,8 @@ export function choisirStats(bloc, pieces = null) {
       ajustePieces = { pieces: Number(k), ratio, n: r[1] };
     }
   }
-  const fiabilite = n >= 100 ? 'bonne' : n >= 30 ? 'correcte' : n >= 10 ? 'moyenne' : 'faible';
+  if (bloc.libelle) fenetre = bloc.libelle;
+  const fiabilite = bloc.fiabilite || (n >= 100 ? 'bonne' : n >= 30 ? 'correcte' : n >= 10 ? 'moyenne' : 'faible');
   return { q, n, fenetre, fiabilite, ajustePieces, mediane: q[2] };
 }
 
@@ -163,4 +164,31 @@ export function medianeDe(vals) {
   const s = [...vals].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/* Bloc de prix construit a partir d'une seule valeur mediane (reference saisie ou publiee sans quartiles) :
+   la fourchette est estimee a +/- 15 % (quartiles) et +/- 30 % (extremes). */
+export function blocSynthetique(mediane, extra = {}) {
+  const q = [0.7, 0.85, 1, 1.15, 1.3].map((k) => Math.round(mediane * k));
+  return { n: 10, q, n3: 10, q3: q, ...extra };
+}
+
+/* Quantiles [p10, p25, p50, p75, p90] par interpolation lineaire. */
+export function quantilesDe(vals) {
+  const s = [...vals].sort((a, b) => a - b);
+  const at = (p) => {
+    const k = (s.length - 1) * p, f = Math.floor(k), c = Math.min(f + 1, s.length - 1);
+    return s[f] + (s[c] - s[f]) * (k - f);
+  };
+  return [0.1, 0.25, 0.5, 0.75, 0.9].map((p) => Math.round(at(p)));
+}
+
+export const MIN_OBSERVATIONS = 8;
+
+/* Bloc de prix d'annonces observees (prix demandes, pas des ventes) : null si trop peu d'annonces. */
+export function blocDepuisObservations(rows) {
+  const n = rows.length;
+  if (n < MIN_OBSERVATIONS) return null;
+  const q = quantilesDe(rows.map((r) => r.p));
+  return { n, q, n3: n, q3: q, libelle: `${n} annonces observées`, fiabilite: n >= 30 ? 'correcte' : 'moyenne' };
 }

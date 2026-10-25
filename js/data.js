@@ -2,6 +2,8 @@
 
 import { preparer, rechercher, versCommune } from './search.js';
 import { store } from './util.js';
+import { blocSynthetique, blocDepuisObservations } from './analysis.js';
+import { observations } from './state.js';
 
 const cache = new Map();
 
@@ -33,7 +35,11 @@ export async function communeParInsee(insee) {
   return r ? versCommune(r.r) : null;
 }
 
-/* Une commune, un code postal : retourne la fiche de marche { fiche, source } et les fiches par code postal. */
+export const refsNotaires = () => getJSON('data/refs-notaires.json');
+
+/* Une commune, un code postal : retourne la fiche de marche et, pour chaque type de bien, d'ou viennent les prix.
+   sources.a / sources.h : 'dvf' (ventes reelles), 'manuel' (prix saisi), 'notaires' (mediane publiee par les notaires),
+   'annonces' (prix demandes observes dans vos imports) ou null. */
 export async function marche(commune, cp = null) {
   const d = await getJSON(`data/prix/${commune.dep}.json`);
   const m = await meta();
@@ -41,16 +47,33 @@ export async function marche(commune, cp = null) {
   const parCommune = d.c[commune.insee] || null;
   const parCp = {};
   for (const c of commune.cps) if (d.p[c]) parCp[c] = d.p[c];
-  let fiche = cp && d.p[cp] ? { ...d.p[cp], l: parCommune && parCommune.l } : parCommune;
-  let source = fiche && (fiche.a || fiche.h) ? 'dvf' : null;
-  // Prix de reference saisis par l'utilisateur (departements hors DVF ou commune sans vente).
-  const ref = store.get('refs', {})[commune.insee];
-  if (!source && ref && (ref.a || ref.h)) {
-    const bloc = (v) => (v ? { n: 10, q: [0.7, 0.85, 1, 1.15, 1.3].map((k) => Math.round(v * k)), n3: 10, q3: [0.7, 0.85, 1, 1.15, 1.3].map((k) => Math.round(v * k)) } : undefined);
-    fiche = { ...(fiche || {}), a: bloc(ref.a), h: bloc(ref.h) };
-    source = 'manuel';
+  const base = cp && d.p[cp] ? { ...d.p[cp], l: parCommune && parCommune.l } : parCommune;
+  const fiche = { ...(base || {}) };
+  const sources = { a: fiche.a ? 'dvf' : null, h: fiche.h ? 'dvf' : null };
+
+  // Departements sans ventes publiees : reference saisie, puis medianes des notaires, puis annonces observees.
+  let notaires = null;
+  if (sansDvf) {
+    try {
+      const n = await refsNotaires();
+      notaires = { commune: n.communes[commune.insee] || null, dep: n.departements[commune.dep] || null, secteurs: n.secteurs[commune.dep] || [], source: n.source, url: n.url, periode: n.periode, note: n.note };
+    } catch { /* repere des notaires indisponible */ }
   }
-  return { commune, fiche, parCp, source, sansDvf, meta: m };
+  const ref = store.get('refs', {})[commune.insee] || {};
+  for (const [k, key] of [['a', 'a'], ['h', 'h']]) {
+    if (sources[k]) continue;
+    if (ref[key]) { fiche[k] = blocSynthetique(ref[key]); sources[k] = 'manuel'; continue; }
+    if (!sansDvf) continue;
+    if (k === 'a' && notaires && notaires.commune && notaires.commune.a) {
+      fiche.a = blocSynthetique(notaires.commune.a, { libelle: `médiane des notaires (ventes ${notaires.periode.slice(-4)})`, fiabilite: 'indicative' });
+      sources.a = 'notaires';
+      continue;
+    }
+    const obs = blocDepuisObservations(observations.get(commune.insee, k));
+    if (obs) { fiche[k] = obs; sources[k] = 'annonces'; }
+  }
+  const nbObservations = sansDvf ? { a: observations.get(commune.insee, 'a').length, h: observations.get(commune.insee, 'h').length } : null;
+  return { commune, fiche, parCp, source: sources.a || sources.h, sources, sansDvf, notaires, nbObservations, meta: m };
 }
 
 export async function ventes(dep) {

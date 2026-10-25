@@ -97,3 +97,25 @@ test('comparables : filtre par type, surface, pieces et trie par proximite', () 
   assert.equal(c[0].adresse, '1 Rue A');
   assert.equal(c[0].ppm2, 2500);
 });
+
+import { blocSynthetique, blocDepuisObservations, quantilesDe, MIN_OBSERVATIONS } from '../js/analysis.js';
+
+test('blocSynthetique : fourchette autour de la mediane et libelle conserve', () => {
+  const b = blocSynthetique(2000, { libelle: 'médiane des notaires', fiabilite: 'indicative' });
+  assert.deepEqual(b.q, [1400, 1700, 2000, 2300, 2600]);
+  const s = choisirStats(b);
+  assert.equal(s.mediane, 2000);
+  assert.equal(s.fenetre, 'médiane des notaires');
+  assert.equal(s.fiabilite, 'indicative');
+});
+
+test('annonces observees : minimum requis et quantiles', () => {
+  assert.equal(MIN_OBSERVATIONS, 8);
+  assert.equal(blocDepuisObservations(Array.from({ length: 7 }, (_, i) => ({ p: 2000 + i }))), null);
+  const rows = Array.from({ length: 10 }, (_, i) => ({ p: 1000 + i * 100 }));
+  const b = blocDepuisObservations(rows);
+  assert.equal(b.n, 10);
+  assert.equal(b.q[2], 1450);
+  assert.equal(b.libelle, '10 annonces observées');
+  assert.deepEqual(quantilesDe([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+});

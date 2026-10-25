@@ -83,6 +83,28 @@ export const recherches = {
   remove(id) { store.set('recherches', recherches.list().filter((x) => x.id !== id)); },
 };
 
+/* ---------- Annonces observees (departements sans ventes publiees) ----------
+   Chaque import d'annonces d'une commune sans donnees de vente alimente une reference locale, stockee sur l'appareil. */
+const OBS_JOURS = 150;
+const OBS_MAX = 300;
+export const observations = {
+  get(insee, cle) {
+    const lim = Date.now() - OBS_JOURS * 86400000;
+    return ((store.get('obs', {})[insee] || {})[cle] || []).filter((r) => r.t >= lim);
+  },
+  add(insee, cle, items) {
+    const all = store.get('obs', {});
+    const par = all[insee] || {};
+    const cur = observations.get(insee, cle);
+    const vus = new Set(cur.map((r) => r.k));
+    const now = Date.now();
+    for (const it of items) if (it.k && it.p > 0 && !vus.has(it.k)) { cur.push({ p: Math.round(it.p), k: it.k, t: now }); vus.add(it.k); }
+    par[cle] = cur.slice(-OBS_MAX);
+    all[insee] = par;
+    store.set('obs', all);
+  },
+};
+
 /* ---------- Comparateur de villes ---------- */
 export const comparateur = {
   list: () => store.get('comparateur', []),

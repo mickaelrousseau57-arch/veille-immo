@@ -2,11 +2,13 @@
    fusionne les doublons entre sites, les compare au marche et les classe. */
 
 import { esc, eur, eurM2, num, store } from '../util.js';
-import { carte, badge, segments, brancherSegments, selecteurHTML, brancherSelecteur, toast, copier, basculeAnalyse } from '../ui.js';
+import { carte, badge, segments, brancherSegments, selecteurHTML, brancherSelecteur, toast, basculeAnalyse } from '../ui.js';
 import { chercher } from '../data.js';
 import { getCommune, annonces } from '../state.js';
 import { lireCollage, lireAnnonces, regrouper, memeBien } from '../multi.js';
-import { codeMarquePage } from '../extract.js';
+import { marquePageHTML, brancherMarquePage } from './marquepage.js';
+import { collerTexte, surRetour } from '../presse.js';
+import { PREFIXE } from '../multi.js';
 import { evaluer } from '../evaluer.js';
 import { icon } from '../icons.js';
 
@@ -16,21 +18,11 @@ export async function render(root) {
   let lot = [];
   let texte = '';
 
-  const bm = codeMarquePage();
-
   function formulaire() {
     return carte('Importer plusieurs annonces', `
       <p class="lead">Rassemblez en une seule liste les annonces de tous les sites : l'application les lit, supprime les doublons entre sites, les compare aux prix réels et les classe des meilleures affaires aux plus chères.</p>
       ${segments('seg-imp', [['vente', 'Achat'], ['location', 'Location']], mode)}
-      <details open><summary>Méthode rapide sur ordinateur : le marque-page</summary>
-        <ol class="steps">
-          <li>Affichez la barre de favoris de votre navigateur et glissez ce bouton dessus : <a class="btn bm" id="bm" href="${esc(bm)}" draggable="true">${icon('copy')}Copier les annonces</a></li>
-          <li>Ouvrez une recherche sur Leboncoin, SeLoger, Bien'ici, PAP... Faites défiler pour afficher toutes les annonces, puis cliquez sur le favori. Répétez sur chaque site.</li>
-          <li>Revenez ici et collez ci-dessous : les annonces de tous les sites s'additionnent.</li>
-        </ol>
-        <div class="actions"><button class="btn ghost" id="bm-copy">${icon('copy')}Copier le code (pour un téléphone)</button></div>
-        <p class="note">Sur téléphone : créez un favori quelconque, puis remplacez son adresse par le code copié. Le marque-page lit uniquement ce que votre navigateur affiche et le copie dans votre presse-papiers : rien n'est envoyé nulle part.</p>
-      </details>
+      ${marquePageHTML()}
       <details><summary>Sans marque-page : copier-coller de la page</summary>
         <p class="muted" style="margin-top:8px">Sur la page de résultats, sélectionnez tout (Ctrl+A ou Cmd+A), copiez, puis collez ci-dessous. Le résultat est moins précis (les liens des annonces sont perdus), à vérifier dans la liste.</p>
       </details>
@@ -47,10 +39,12 @@ export async function render(root) {
     ta.addEventListener('input', () => { texte = ta.value; });
     brancherSegments(root, 'seg-imp', (v) => { mode = v; store.set('reg.importMode', v); });
     brancherSelecteur(root, 'pick-imp', (c) => { defaut = c; });
-    root.querySelector('#bm').addEventListener('click', (e) => { e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris, sans cliquer ici'); });
-    root.querySelector('#bm-copy').addEventListener('click', () => copier(decodeURIComponent(bm.slice('javascript:'.length))));
+    brancherMarquePage(root);
     root.querySelector('#btn-coller').addEventListener('click', async () => {
-      try { texte = await navigator.clipboard.readText(); ta.value = texte; if (!texte) toast('Le presse-papiers est vide'); } catch { toast('Collez à la main dans la zone de texte'); }
+      const t = await collerTexte();
+      if (t == null) { toast('Collez à la main dans la zone de texte'); return; }
+      texte = t; ta.value = t;
+      if (!t) toast('Le presse-papiers est vide'); else if (t.startsWith(PREFIXE)) lire();
     });
     root.querySelector('#btn-lire-multi').addEventListener('click', lire);
     if (lot.length) afficherLot();
@@ -155,4 +149,18 @@ export async function render(root) {
   }
 
   dessiner();
+  const enAttente = sessionStorage.getItem('immo-import');
+  if (enAttente) {
+    sessionStorage.removeItem('immo-import');
+    texte = enAttente;
+    root.querySelector('#colle-multi').value = texte;
+    lire();
+  }
+  surRetour(root, (t) => {
+    texte = t;
+    const ta = root.querySelector('#colle-multi');
+    if (ta) ta.value = t;
+    toast('Annonces lues dans le presse-papiers');
+    lire();
+  });
 }
